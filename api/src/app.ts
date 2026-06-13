@@ -4,6 +4,7 @@ import cors from 'cors';
 import { healthRouter } from './modules/health/health.routes';
 import { geoRouter } from './modules/geo/geo.routes';
 import { meRouter } from './modules/me/me.routes';
+import { ridesRouter } from './modules/rides/rides.routes';
 import { authRouter } from './auth/auth.routes';
 import { errorHandler } from './common/errors';
 
@@ -18,6 +19,7 @@ export function createApp() {
   app.use('/health', healthRouter);
   app.use('/auth', authRouter);
   app.use('/me', meRouter);
+  app.use('/rides', ridesRouter);
   app.use('/api/geo', geoRouter);
 
   // 404 fallback

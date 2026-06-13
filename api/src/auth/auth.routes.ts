@@ -23,8 +23,14 @@ const loginSchema = z.object({
 
 const refreshSchema = z.object({ refreshToken: z.string().min(1) });
 
-async function issueTokens(userId: number, role: Role, email: string) {
-  const accessToken = signAccess({ sub: userId, role, email });
+async function issueTokens(
+  userId: number,
+  role: Role,
+  email: string,
+  clientId: number | null,
+  driverId: number | null,
+) {
+  const accessToken = signAccess({ sub: userId, role, email, clientId, driverId });
   const { token, hash } = newRefreshToken();
   await svc.storeRefresh(userId, hash, refreshExpiry());
   return { accessToken, refreshToken: token };
@@ -50,7 +56,7 @@ authRouter.post('/register', async (req, res, next) => {
       throw e; // CK_APP_USER_LINK (ORA-02290) is mapped to 400 by the global handler
     }
 
-    const tokens = await issueTokens(userId, b.role, b.email);
+    const tokens = await issueTokens(userId, b.role, b.email, b.clientId ?? null, b.driverId ?? null);
     res.status(201).json({ user: { id: userId, email: b.email, role: b.role }, ...tokens });
   } catch (err) {
     next(err);
@@ -68,7 +74,7 @@ authRouter.post('/login', async (req, res, next) => {
     const ok = await bcrypt.compare(b.password, u.PASSWORD_HASH);
     if (!ok) throw new HttpError(401, 'Invalid credentials');
 
-    const tokens = await issueTokens(u.USER_ID, u.ROLE, u.EMAIL);
+    const tokens = await issueTokens(u.USER_ID, u.ROLE, u.EMAIL, u.CLIENT_ID, u.DRIVER_ID);
     res.json({ user: { id: u.USER_ID, email: u.EMAIL, role: u.ROLE }, ...tokens });
   } catch (err) {
     next(err);
@@ -87,7 +93,7 @@ authRouter.post('/refresh', async (req, res, next) => {
     if (!u || u.STATUS !== 'ACTIVE') throw new HttpError(401, 'Invalid refresh token');
 
     await svc.revokeRefresh(h); // rotate: old token can't be reused
-    const tokens = await issueTokens(u.USER_ID, u.ROLE, u.EMAIL);
+    const tokens = await issueTokens(u.USER_ID, u.ROLE, u.EMAIL, u.CLIENT_ID, u.DRIVER_ID);
     res.json(tokens);
   } catch (err) {
     next(err);

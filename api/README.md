@@ -31,6 +31,11 @@ it over HTTP/JSON.
 | POST | `/auth/refresh` | — | Rotate refresh token → new tokens |
 | POST | `/auth/logout` | — | Revoke a refresh token |
 | GET | `/me` | Bearer | Current user's claims |
+| POST | `/rides` | CLIENT | Request a ride → creates a `trip_request` and runs `aloca_motorista` to assign the nearest driver |
+| GET | `/rides/:id` | owner/driver/admin | Ride status + assigned driver |
+| GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) |
+| POST | `/rides/:id/accept` | DRIVER | Assigned driver accepts (`ASSIGNED → ACCEPTED`) |
+| POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED` + fee) |
 | GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
 
 Auth uses JWT access tokens (short-lived) + opaque, rotating refresh tokens

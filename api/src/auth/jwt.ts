@@ -8,6 +8,8 @@ export interface AccessPayload {
   sub: number; // app_user.user_id
   role: Role;
   email: string;
+  clientId?: number | null;
+  driverId?: number | null;
 }
 
 /** Short-lived access token (JWT). */

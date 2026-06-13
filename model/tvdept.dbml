@@ -1,0 +1,209 @@
+// ============================================================================
+// TVDEPT - Physical table model (Group 23 / TVDEPT)
+// Matches tables.sql exactly + Checkpoint 3 additions.
+// Render at https://dbdiagram.io  ->  Export  ->  PDF/PNG  (for printing)
+// CP3 additions are marked with the note "CP3".
+// ============================================================================
+
+Table CLIENT {
+  client_id NUMBER [pk]
+  name VARCHAR2(100) [not null]
+  email VARCHAR2(100) [not null, unique]
+  phone VARCHAR2(20)
+  birth_date DATE
+  gender VARCHAR2(10) [note: 'M / F / OTHER']
+  address VARCHAR2(200)
+  latitude NUMBER
+  longitude NUMBER
+  payment_method VARCHAR2(20) [note: 'MULTIBANCO / MBWAY']
+  num_evaluations NUMBER
+  avg_score NUMBER
+}
+
+Table DRIVER {
+  driver_id NUMBER [pk]
+  name VARCHAR2(100) [not null]
+  email VARCHAR2(100) [not null, unique]
+  phone VARCHAR2(20)
+  birth_date DATE
+  license_number VARCHAR2(30)
+  latitude NUMBER
+  longitude NUMBER
+  registration_date DATE
+  status VARCHAR2(20) [note: 'OFFLINE / AVAILABLE / ON_TRIP / DISABLED (DISABLED added in CP3)']
+  avg_score NUMBER
+  num_ratings NUMBER
+}
+
+Table VEHICLE {
+  vehicle_id NUMBER [pk]
+  plate VARCHAR2(20) [not null, unique]
+  brand VARCHAR2(50)
+  model VARCHAR2(50)
+  year NUMBER
+  fuel_type VARCHAR2(30)
+  vehicle_type VARCHAR2(10) [note: 'AI / NOAI']
+}
+
+// N:N between DRIVER and VEHICLE (a vehicle belongs to a single driver: UNIQUE on vehicle_id)
+Table DRIVER_VEHICLE {
+  driver_id NUMBER [not null]
+  vehicle_id NUMBER [not null, unique]
+  ownership VARCHAR2(20) [not null, note: 'OWNER / COMPANY / SHARED']
+
+  indexes {
+    (driver_id, vehicle_id) [pk]
+  }
+}
+
+Table TARIFF {
+  tariff_id NUMBER [pk]
+  fuel_type VARCHAR2(30) [not null]
+  price_per_km NUMBER [not null]
+  price_per_minute NUMBER [not null]
+  base_fee NUMBER [not null]
+  cancellation_fee NUMBER [not null]
+  commission_pct NUMBER [not null]
+}
+
+Table DRIVER_SCHEDULE {
+  driver_id NUMBER [not null]
+  vehicle_id NUMBER [not null]
+  day_of_week NUMBER [not null, note: '1-7']
+  start_time DATE [not null]
+  end_time DATE [not null]
+  trips_count NUMBER [note: 'CP3 - trips done in this shift']
+  total_duration_min NUMBER [note: 'CP3 - total trip minutes in this shift']
+  total_value NUMBER [note: 'CP3 - total amount billed in this shift']
+
+  indexes {
+    (driver_id, vehicle_id, day_of_week) [pk]
+  }
+}
+
+Table LOCATION {
+  location_id NUMBER [pk]
+  vehicle_id NUMBER [not null]
+  latitude NUMBER [not null]
+  longitude NUMBER [not null]
+  location_date DATE
+  status VARCHAR2(20) [note: 'OFFLINE / AVAILABLE / ON_TRIP / CRUSHED']
+}
+
+Table TRIP_REQUEST {
+  request_id NUMBER [pk]
+  client_id NUMBER [not null]
+  driver_id NUMBER
+  origin_address VARCHAR2(200)
+  dest_name VARCHAR2(200)
+  dest_lat NUMBER
+  dest_long NUMBER
+  request_date DATE
+  pickup_date DATE
+  fuel_type VARCHAR2(30)
+  status VARCHAR2(20) [note: 'REQUESTED / ASSIGNED / ACCEPTED / PICKED_UP / CANCELLED / COMPLETED']
+  proposed_value NUMBER
+  cancellation_date DATE
+  vehicle_id NUMBER [note: 'assigned vehicle']
+  vehicle_type VARCHAR2(10) [note: 'AI / NOAI preference']
+}
+
+Table TRIP_PREFERENCES {
+  request_id NUMBER [pk]
+  vehicle_class VARCHAR2(30) [not null, note: 'STANDARD / PREMIUM / SMART']
+  smart_vehicle NUMBER [note: '0 or 1']
+  preferred_model VARCHAR2(50) [note: 'only when smart_vehicle = 1']
+  extra_fee NUMBER [note: 'only when smart_vehicle = 1']
+}
+
+Table TRIP {
+  request_id NUMBER [pk]
+  driver_id NUMBER
+  vehicle_id NUMBER [not null]
+  start_date DATE
+  pickup_date DATE
+  pickup_lat NUMBER
+  pickup_long NUMBER
+  end_date DATE
+  distance_km NUMBER
+  value NUMBER
+  status VARCHAR2(20) [note: 'IN_PROGRESS / COMPLETED']
+}
+
+Table CLIENT_RATING {
+  client_rating_id NUMBER [pk]
+  trip_id NUMBER [not null]
+  client_id NUMBER [not null]
+  score NUMBER [not null, note: '1-5']
+  review_comment VARCHAR2(500)
+  rating_date DATE
+}
+
+Table DRIVER_RATING {
+  driver_rating_id NUMBER [pk]
+  trip_id NUMBER [not null]
+  driver_id NUMBER [not null]
+  score NUMBER [not null, note: '1-5']
+  review_comment VARCHAR2(500)
+  rating_date DATE
+}
+
+Table DRIVER_PAYMENT {
+  payment_id NUMBER [pk]
+  driver_id NUMBER [not null]
+  period_start DATE [not null]
+  period_end DATE [not null]
+  value NUMBER [not null]
+  commission NUMBER [not null]
+  net_value NUMBER [not null]
+  payment_date DATE
+}
+
+Table TRIP_PROCESS {
+  process_id NUMBER [pk]
+  request_id NUMBER [not null]
+  driver_id NUMBER
+  status VARCHAR2(20)
+  proposed_value NUMBER
+  notification_date DATE
+  change_date DATE
+}
+
+// ============================== RELATIONSHIPS (FKs) ==========================
+
+// DRIVER_VEHICLE (N:N between DRIVER and VEHICLE)
+Ref: DRIVER_VEHICLE.driver_id > DRIVER.driver_id
+Ref: DRIVER_VEHICLE.vehicle_id - VEHICLE.vehicle_id
+
+// DRIVER_SCHEDULE
+Ref: DRIVER_SCHEDULE.driver_id > DRIVER.driver_id
+Ref: DRIVER_SCHEDULE.vehicle_id > VEHICLE.vehicle_id
+
+// LOCATION
+Ref: LOCATION.vehicle_id > VEHICLE.vehicle_id
+
+// TRIP_REQUEST
+Ref: TRIP_REQUEST.client_id > CLIENT.client_id
+Ref: TRIP_REQUEST.driver_id > DRIVER.driver_id
+Ref: TRIP_REQUEST.vehicle_id > VEHICLE.vehicle_id
+
+// TRIP_PREFERENCES (1:1 with TRIP_REQUEST)
+Ref: TRIP_PREFERENCES.request_id - TRIP_REQUEST.request_id
+
+// TRIP (1:1 with TRIP_REQUEST)
+Ref: TRIP.request_id - TRIP_REQUEST.request_id
+Ref: TRIP.driver_id > DRIVER.driver_id
+Ref: TRIP.vehicle_id > VEHICLE.vehicle_id
+
+// RATINGS
+Ref: CLIENT_RATING.trip_id > TRIP.request_id
+Ref: CLIENT_RATING.client_id > CLIENT.client_id
+Ref: DRIVER_RATING.trip_id > TRIP.request_id
+Ref: DRIVER_RATING.driver_id > DRIVER.driver_id
+
+// DRIVER_PAYMENT
+Ref: DRIVER_PAYMENT.driver_id > DRIVER.driver_id
+
+// TRIP_PROCESS
+Ref: TRIP_PROCESS.request_id > TRIP_REQUEST.request_id
+Ref: TRIP_PROCESS.driver_id > DRIVER.driver_id

@@ -1,0 +1,19 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Editor / OS / tooling
+.claude/
+.vscode/
+.idea/
+~$*
+.DS_Store
+Thumbs.db
+
+# Build artifacts / archives
+*.zip
+
+# Local SQL*Plus / Oracle output
+*.lst
+*.log

@@ -117,6 +117,11 @@ the ER diagram.
 
 ---
 
+## Authors
+
+- gltknebr@gmail.com
+- kirill30082005@gmail.com
+
 ## License
 
 [MIT](LICENSE)

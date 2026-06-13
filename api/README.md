@@ -23,10 +23,19 @@ it over HTTP/JSON.
 
 ## Endpoints (so far)
 
-| Method | Path | Description |
-|---|---|---|
-| GET | `/health` | Liveness + DB round-trip |
-| GET | `/api/geo/distance?lat1&long1&lat2&long2` | Haversine distance via the DB function `distancia_linear` |
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| GET | `/health` | — | Liveness + DB round-trip |
+| POST | `/auth/register` | — | Create an account (`CLIENT`+`clientId` / `DRIVER`+`driverId` / `ADMIN`) → tokens |
+| POST | `/auth/login` | — | Email + password → access + refresh tokens |
+| POST | `/auth/refresh` | — | Rotate refresh token → new tokens |
+| POST | `/auth/logout` | — | Revoke a refresh token |
+| GET | `/me` | Bearer | Current user's claims |
+| GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
+
+Auth uses JWT access tokens (short-lived) + opaque, rotating refresh tokens
+(only their SHA-256 hash is stored). Passwords are bcrypt-hashed. Send the
+access token as `Authorization: Bearer <token>`.
 
 Example:
 ```bash

@@ -12,6 +12,12 @@ export class HttpError extends Error {
  * to meaningful HTTP responses. Extend this table as new endpoints are added.
  */
 const ORA_TO_HTTP: Record<number, { status: number; message: string }> = {
+  // Standard Oracle constraint errors
+  1: { status: 409, message: 'Duplicate value (unique constraint)' },
+  1400: { status: 400, message: 'A required field is missing' },
+  2290: { status: 400, message: 'A value violates a constraint' },
+  2291: { status: 400, message: 'Referenced record does not exist' },
+  // Application errors (RAISE_APPLICATION_ERROR)
   20801: { status: 404, message: 'Driver not found' },
   20802: { status: 404, message: 'Client not found' },
   20803: { status: 400, message: 'Invalid vehicle type' },

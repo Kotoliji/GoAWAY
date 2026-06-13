@@ -3,6 +3,8 @@ import helmet from 'helmet';
 import cors from 'cors';
 import { healthRouter } from './modules/health/health.routes';
 import { geoRouter } from './modules/geo/geo.routes';
+import { meRouter } from './modules/me/me.routes';
+import { authRouter } from './auth/auth.routes';
 import { errorHandler } from './common/errors';
 
 /** Build the Express application (no network side-effects). */
@@ -14,6 +16,8 @@ export function createApp() {
   app.use(express.json());
 
   app.use('/health', healthRouter);
+  app.use('/auth', authRouter);
+  app.use('/me', meRouter);
   app.use('/api/geo', geoRouter);
 
   // 404 fallback

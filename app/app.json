@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "TVDEPT",
+    "slug": "tvdept",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "scheme": "tvdept",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0B5FFF"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "TVDEPT uses your location to request and track rides."
+      }
+    },
+    "android": {
+      "permissions": ["ACCESS_FINE_LOCATION", "ACCESS_COARSE_LOCATION"]
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "TVDEPT uses your location to request and track rides."
+        }
+      ]
+    ]
+  }
+}

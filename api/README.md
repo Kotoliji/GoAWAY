@@ -67,3 +67,17 @@ src/
 
 Database `-208xx` exceptions are translated to proper HTTP status codes in
 `common/errors.ts` (e.g. `-20807` → `409 No available driver in range`).
+
+## Realtime (Socket.IO)
+
+The server also runs a JWT-authenticated WebSocket layer (`src/realtime/`):
+
+| Direction | Event | Payload | Purpose |
+|---|---|---|---|
+| client → server | `driver:location` | `{ lat, long }` | A driver streams its GPS (updates the DB) |
+| client → server | `ride:watch` | `{ rideId }` | Rider subscribes to its assigned driver |
+| server → client | `driver:moved` | `{ driverId, lat, long }` | Live driver position pushed to watchers |
+| client → server | `ride:unwatch` | `{ driverId }` | Stop receiving updates |
+
+Connect with the access token in the handshake:
+`io(API_URL, { auth: { token } })`.

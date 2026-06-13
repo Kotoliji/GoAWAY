@@ -1,6 +1,9 @@
+import http from 'http';
+import { Server } from 'socket.io';
 import { createApp } from './app';
 import { initDb, closeDb } from './db/oracle';
 import { env } from './config/env';
+import { setupSocket } from './realtime/socket';
 
 async function main() {
   await initDb();
@@ -8,12 +11,18 @@ async function main() {
   console.log('Oracle pool ready');
 
   const app = createApp();
-  const server = app.listen(env.PORT, () => {
+  const server = http.createServer(app);
+
+  const io = new Server(server, { cors: { origin: '*' } });
+  setupSocket(io);
+
+  server.listen(env.PORT, () => {
     // eslint-disable-next-line no-console
-    console.log(`TVDEPT API listening on http://localhost:${env.PORT}`);
+    console.log(`TVDEPT API + realtime on http://localhost:${env.PORT}`);
   });
 
   const shutdown = async () => {
+    io.close();
     server.close();
     await closeDb();
     process.exit(0);

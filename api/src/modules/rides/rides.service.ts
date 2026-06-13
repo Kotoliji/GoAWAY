@@ -139,3 +139,92 @@ export async function estimate(requestId: number): Promise<Estimate | null> {
     return { km, fare };
   });
 }
+
+/** Driver picks up the passenger: ACCEPTED -> PICKED_UP, and the trip starts
+ *  (creates the TRIP row, driver goes ON_TRIP). */
+export async function pickup(requestId: number, driverId: number): Promise<boolean> {
+  return withConn(async (c) => {
+    const up = await c.execute(
+      `UPDATE trip_request SET status = 'PICKED_UP'
+        WHERE request_id = :id AND driver_id = :drv AND status = 'ACCEPTED'`,
+      { id: requestId, drv: driverId },
+    );
+    if ((up.rowsAffected ?? 0) === 0) {
+      await c.rollback();
+      return false;
+    }
+    const v = await c.execute<{ VEHICLE_ID: number | null }>(
+      `SELECT vehicle_id FROM trip_request WHERE request_id = :id`,
+      { id: requestId },
+    );
+    const vehicleId = v.rows?.[0]?.VEHICLE_ID ?? null;
+    await c.execute(
+      `INSERT INTO trip (request_id, driver_id, vehicle_id, start_date, pickup_date, status)
+       VALUES (:id, :drv, :veh, SYSDATE, SYSDATE, 'IN_PROGRESS')`,
+      { id: requestId, drv: driverId, veh: vehicleId },
+    );
+    await c.execute(`UPDATE driver SET status = 'ON_TRIP' WHERE driver_id = :drv`, {
+      drv: driverId,
+    });
+    await c.commit();
+    return true;
+  });
+}
+
+/** Driver ends the trip: marks the TRIP COMPLETED (fires viagem_Terminada, which
+ *  frees the driver and updates shift totals) and the request COMPLETED.
+ *  If no fare is supplied it is computed from distance and the tariff. */
+export async function complete(
+  requestId: number,
+  driverId: number,
+  distanceKm: number,
+  value: number | null,
+): Promise<boolean> {
+  return withConn(async (c) => {
+    let fare = value;
+    if (fare == null) {
+      const t = await c.execute<{ BASE: number | null; PERKM: number | null }>(
+        `SELECT (SELECT base_fee     FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS base,
+                (SELECT price_per_km FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS perkm
+           FROM trip_request tr WHERE request_id = :id`,
+        { id: requestId },
+      );
+      const base = t.rows?.[0]?.BASE ?? 2.5;
+      const perKm = t.rows?.[0]?.PERKM ?? 0.5;
+      fare = Math.round((base + perKm * distanceKm) * 100) / 100;
+    }
+    const up = await c.execute(
+      `UPDATE trip
+          SET end_date = SYSDATE, distance_km = :dist, value = :val, status = 'COMPLETED'
+        WHERE request_id = :id AND driver_id = :drv AND status = 'IN_PROGRESS'`,
+      { dist: distanceKm, val: fare, id: requestId, drv: driverId },
+    );
+    if ((up.rowsAffected ?? 0) === 0) {
+      await c.rollback();
+      return false;
+    }
+    await c.execute(`UPDATE trip_request SET status = 'COMPLETED' WHERE request_id = :id`, {
+      id: requestId,
+    });
+    await c.commit();
+    return true;
+  });
+}
+
+/** Client rates a completed trip. cliente_Avalia validates (only completed,
+ *  no self-rating) and TRG_DRIVER_RATING_UPDATE refreshes the driver score. */
+export async function rate(
+  requestId: number,
+  clientId: number,
+  score: number,
+  comment: string | null,
+): Promise<void> {
+  await withConn((c) =>
+    c.execute(
+      `INSERT INTO client_rating (client_rating_id, trip_id, client_id, score, review_comment, rating_date)
+       VALUES (seq_client_rating.NEXTVAL, :trip, :client, :score, :cmt, SYSDATE)`,
+      { trip: requestId, client: clientId, score, cmt: comment ?? null },
+      { autoCommit: true },
+    ),
+  );
+}

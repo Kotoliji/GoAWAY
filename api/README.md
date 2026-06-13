@@ -35,6 +35,9 @@ it over HTTP/JSON.
 | GET | `/rides/:id` | owner/driver/admin | Ride status + assigned driver |
 | GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) |
 | POST | `/rides/:id/accept` | DRIVER | Assigned driver accepts (`ASSIGNED → ACCEPTED`) |
+| POST | `/rides/:id/pickup` | DRIVER | Pick up passenger — trip starts (creates `trip`, driver `ON_TRIP`) |
+| POST | `/rides/:id/complete` | DRIVER | End trip (fires `viagem_Terminada`: frees driver, updates shift, computes fare) |
+| POST | `/rides/:id/rate` | CLIENT | Rate a completed trip (`cliente_Avalia` + `TRG_DRIVER_RATING_UPDATE`) |
 | POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED` + fee) |
 | GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
 

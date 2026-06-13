@@ -113,3 +113,58 @@ ridesRouter.post('/:id/accept', requireAuth, requireRole('DRIVER'), async (req, 
     next(err);
   }
 });
+
+// POST /rides/:id/pickup — driver picks up the passenger (trip starts)
+ridesRouter.post('/:id/pickup', requireAuth, requireRole('DRIVER'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const ride = await svc.getRide(id);
+    if (!ride) throw new HttpError(404, 'Ride not found');
+    if (ride.DRIVER_ID !== req.user!.driverId) throw new HttpError(403, 'Not your ride');
+    const ok = await svc.pickup(id, req.user!.driverId!);
+    if (!ok) throw new HttpError(409, 'Ride must be ACCEPTED to pick up');
+    res.json({ ride: await svc.getRide(id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const completeSchema = z.object({
+  distanceKm: z.coerce.number().nonnegative(),
+  value: z.coerce.number().nonnegative().optional(),
+});
+
+// POST /rides/:id/complete — driver ends the trip
+ridesRouter.post('/:id/complete', requireAuth, requireRole('DRIVER'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const b = parse(completeSchema, req.body);
+    const ride = await svc.getRide(id);
+    if (!ride) throw new HttpError(404, 'Ride not found');
+    if (ride.DRIVER_ID !== req.user!.driverId) throw new HttpError(403, 'Not your ride');
+    const ok = await svc.complete(id, req.user!.driverId!, b.distanceKm, b.value ?? null);
+    if (!ok) throw new HttpError(409, 'Trip must be in progress to complete');
+    res.json({ ride: await svc.getRide(id) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+const rateSchema = z.object({
+  score: z.coerce.number().int().min(1).max(5),
+  comment: z.string().max(500).optional(),
+});
+
+// POST /rides/:id/rate — client rates a completed trip
+ridesRouter.post('/:id/rate', requireAuth, requireRole('CLIENT'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const b = parse(rateSchema, req.body);
+    const ride = await loadAuthorized(req, id);
+    if (ride.CLIENT_ID !== req.user!.clientId) throw new HttpError(403, 'Forbidden');
+    await svc.rate(id, req.user!.clientId!, b.score, b.comment ?? null);
+    res.status(201).json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});

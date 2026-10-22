@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState, ReactNode } from
 import { loadTokens, setTokens, clearTokens, hasSession, getRefresh } from './tokens';
 import { loginApi, registerApi, meApi, logoutApi } from '../api/endpoints';
 import { SignupInput, User } from '../api/types';
+import { closeSocket } from '../realtime/socket';
 
 interface AuthContextValue {
   user: User | null;
@@ -49,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   async function signOut() {
     const rt = getRefresh();
     if (rt) await logoutApi(rt);
+    closeSocket();
     await clearTokens();
     setUser(null);
   }

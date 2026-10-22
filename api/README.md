@@ -32,14 +32,18 @@ it over HTTP/JSON.
 | POST | `/auth/logout` | — | Revoke a refresh token |
 | GET | `/me` | Bearer | Current user's claims |
 | GET | `/me/profile` | Bearer | The client, or driver + vehicle, behind the login |
-| POST | `/rides` | CLIENT | Request a ride → creates a `trip_request` and runs `aloca_motorista` to assign the nearest driver |
+| POST | `/rides` | CLIENT | Request a ride from `originLat/originLong` → creates a `trip_request` and runs `aloca_motorista` to assign the nearest free driver (stays `REQUESTED` if none) |
 | GET | `/rides/:id` | owner/driver/admin | Ride status + assigned driver |
 | GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) |
 | POST | `/rides/:id/accept` | DRIVER | Assigned driver accepts (`ASSIGNED → ACCEPTED`) |
+| POST | `/rides/:id/reject` | DRIVER | Assigned driver declines (`app_driver_reject`: logs `REJECTED`, re-offers to the next driver) |
 | POST | `/rides/:id/pickup` | DRIVER | Pick up passenger — trip starts (creates `trip`, driver `ON_TRIP`) |
-| POST | `/rides/:id/complete` | DRIVER | End trip (fires `viagem_Terminada`: frees driver, updates shift, computes fare) |
+| POST | `/rides/:id/complete` | DRIVER | End trip (fires `viagem_Terminada`: frees driver, updates shift). Distance defaults to `FN_REQUEST_DISTANCE`, fare to distance × tariff of the vehicle's fuel |
 | POST | `/rides/:id/rate` | CLIENT | Rate a completed trip (`cliente_Avalia` + `TRG_DRIVER_RATING_UPDATE`) |
 | POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED` + fee) |
+| GET | `/driver/state` | DRIVER | Status, vehicle, today's trips/earnings, current ride + estimate |
+| POST | `/driver/online` | DRIVER | `{ lat, long }` → `AVAILABLE` (`app_driver_go_online`, refused if `DISABLED`); waiting requests are re-offered |
+| POST | `/driver/offline` | DRIVER | `OFFLINE` (refused mid-trip by `update_status`); held requests go to other drivers |
 | GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
 
 Sign-up bodies:
@@ -52,7 +56,7 @@ Sign-up bodies:
   "vehicle": { "plate": "AA-11-BB", "brand": "Tesla", "model": "Model 3", "year": 2022, "fuelType": "Electric", "vehicleType": "AI" } }
 ```
 
-**Demo logins** (seeded by `database/05_app/04_demo_users.sql`, password `demo123`): every seeded client and driver by their seed email (e.g. client `jose.lopes@email.com`, driver `joao.marques@email.com`) and the admin `admin@tvdept.pt`. Admin accounts cannot be self-registered.
+**Demo logins** (seeded by `database/05_app/05_demo_users.sql`, password `demo123`): every seeded client and driver by their seed email (e.g. client `jose.lopes@email.com`, driver `joao.marques@email.com`) and the admin `admin@tvdept.pt`. Admin accounts cannot be self-registered.
 
 Auth uses JWT access tokens (short-lived) + opaque, rotating refresh tokens
 (only their SHA-256 hash is stored). Passwords are bcrypt-hashed. Send the
@@ -91,6 +95,10 @@ The server also runs a JWT-authenticated WebSocket layer (`src/realtime/`):
 | client → server | `ride:watch` | `{ rideId }` | Rider subscribes to its assigned driver |
 | server → client | `driver:moved` | `{ driverId, lat, long }` | Live driver position pushed to watchers |
 | client → server | `ride:unwatch` | `{ driverId }` | Stop receiving updates |
+| server → client | `ride:updated` | `{ ride }` | Pushed to the ride's client and driver on every change (assigned, accepted, picked up, completed, cancelled, re-assigned) |
+
+Every socket also joins a personal inbox room (`inbox:client:<id>` / `inbox:driver:<id>`),
+which is how `ride:updated` reaches the right people.
 
 Connect with the access token in the handshake:
 `io(API_URL, { auth: { token } })`.

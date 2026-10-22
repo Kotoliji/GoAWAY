@@ -34,7 +34,6 @@ export default function RootNavigator() {
         ) : user.role === 'DRIVER' ? (
           <>
             <Stack.Screen name="DriverHome" component={DriverHomeScreen} options={{ title: 'Driver' }} />
-            <Stack.Screen name="RideStatus" component={RideStatusScreen} options={{ title: 'Ride' }} />
           </>
         ) : (
           <>

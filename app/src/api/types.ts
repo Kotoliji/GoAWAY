@@ -48,6 +48,7 @@ export interface Ride {
   CLIENT_ID: number;
   STATUS: string;
   VEHICLE_TYPE: string | null;
+  ORIGIN_ADDRESS: string | null;
   DEST_NAME: string | null;
   DEST_LAT: number | null;
   DEST_LONG: number | null;
@@ -56,4 +57,33 @@ export interface Ride {
   DRIVER_LAT: number | null;
   DRIVER_LONG: number | null;
   DRIVER_RATING: number | null;
+  CLIENT_NAME: string | null;
+  CLIENT_LAT: number | null;
+  CLIENT_LONG: number | null;
+  VEHICLE_PLATE: string | null;
+  VEHICLE_DESC: string | null;
+}
+
+export interface Estimate {
+  km: number | null;
+  fare: number | null;
+}
+
+export interface DriverInfo {
+  DRIVER_ID: number;
+  NAME: string;
+  STATUS: 'OFFLINE' | 'AVAILABLE' | 'ON_TRIP' | 'DISABLED';
+  LATITUDE: number | null;
+  LONGITUDE: number | null;
+  AVG_SCORE: number | null;
+  VEHICLE_PLATE: string | null;
+  VEHICLE_DESC: string | null;
+  TRIPS_TODAY: number;
+  EARNED_TODAY: number;
+}
+
+export interface DriverState {
+  driver: DriverInfo;
+  ride: Ride | null;
+  estimate: Estimate | null;
 }

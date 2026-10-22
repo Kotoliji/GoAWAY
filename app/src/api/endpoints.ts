@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 import { API_BASE_URL } from '../config';
-import { AuthResponse, Ride, SignupInput, User } from './types';
+import { AuthResponse, DriverInfo, DriverState, Estimate, Ride, SignupInput, User } from './types';
 
 // --- auth ---
 export function loginApi(email: string, password: string) {
@@ -33,6 +33,8 @@ export function logoutApi(refreshToken: string) {
 // --- rides ---
 export function createRideApi(input: {
   vehicleType: 'AI' | 'NOAI';
+  originLat?: number;
+  originLong?: number;
   destName?: string;
   destLat?: number;
   destLong?: number;
@@ -49,9 +51,44 @@ export function getRideApi(id: number) {
 }
 
 export function estimateApi(id: number) {
-  return apiRequest<{ km: number | null; fare: number | null }>(`/rides/${id}/estimate`);
+  return apiRequest<Estimate>(`/rides/${id}/estimate`);
 }
 
 export function cancelRideApi(id: number) {
   return apiRequest<{ ride: Ride }>(`/rides/${id}/cancel`, { method: 'POST' });
+}
+
+// --- driver ---
+export function driverStateApi() {
+  return apiRequest<DriverState>('/driver/state');
+}
+
+export function goOnlineApi(lat: number, long: number) {
+  return apiRequest<{ driver: DriverInfo }>('/driver/online', {
+    method: 'POST',
+    body: JSON.stringify({ lat, long }),
+  });
+}
+
+export function goOfflineApi() {
+  return apiRequest<{ driver: DriverInfo }>('/driver/offline', { method: 'POST' });
+}
+
+export function acceptRideApi(id: number) {
+  return apiRequest<{ ride: Ride }>(`/rides/${id}/accept`, { method: 'POST' });
+}
+
+export function rejectRideApi(id: number) {
+  return apiRequest<{ ok: true }>(`/rides/${id}/reject`, { method: 'POST' });
+}
+
+export function pickupRideApi(id: number) {
+  return apiRequest<{ ride: Ride }>(`/rides/${id}/pickup`, { method: 'POST' });
+}
+
+export function completeRideApi(id: number) {
+  return apiRequest<{ ride: Ride; estimate: Estimate }>(`/rides/${id}/complete`, {
+    method: 'POST',
+    body: JSON.stringify({}),
+  });
 }

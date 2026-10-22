@@ -37,6 +37,9 @@ export default function RiderHomeScreen({ navigation }: ScreenProps<'RiderHome'>
     try {
       const { ride } = await createRideApi({
         vehicleType: 'NOAI',
+        // pickup = where the rider is now
+        originLat: region?.latitude,
+        originLong: region?.longitude,
         destName: dest ? 'Selected destination' : 'ISEC',
         destLat: target.latitude,
         destLong: target.longitude,

@@ -38,6 +38,7 @@ const ORA_TO_HTTP: Record<number, { status: number; message: string }> = {
   20820: { status: 409, message: 'Trip can only be rated after completion' },
   20821: { status: 409, message: 'Request cannot be cancelled' },
   20822: { status: 409, message: 'Invalid status transition' },
+  20823: { status: 403, message: 'Driver account is disabled' },
 };
 
 /** Pull the ORA-208xx code out of an oracledb error, if present. */

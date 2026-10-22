@@ -10,7 +10,9 @@ Cross-platform (iOS + Android) ride-hailing app built with **Expo + React Native
   tap to set a destination, **Request ride** → `POST /rides` (runs your
   `aloca_motorista`), then a live **ride status** screen that polls until the
   driver is assigned / on the way / completed, with cancel.
-- **Driver**: minimal online screen (full incoming-request flow lands with push/WebSocket).
+- **Driver flow**: go online/offline, new requests arrive instantly over the socket
+  (`ride:updated`, with vibration), accept / decline, passenger on board, complete trip;
+  GPS is streamed while online; today's trips and earnings in the top bar.
 
 ## Structure
 
@@ -44,6 +46,5 @@ app/
 
 ## Next milestones
 
-- Driver incoming-request screen (needs a `GET /driver/rides` endpoint).
 - Real-time driver location on the rider map (WebSocket).
 - Push notifications (FCM), payments, trip history.

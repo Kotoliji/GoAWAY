@@ -8,8 +8,8 @@ export async function updateDriverLocation(
 ): Promise<void> {
   await withConn((c) =>
     c.execute(
-      `UPDATE driver SET latitude = :lat, longitude = :long WHERE driver_id = :id`,
-      { lat, long, id: driverId },
+      `UPDATE driver SET latitude = :lat, longitude = :lng WHERE driver_id = :id`,
+      { lat, lng: long, id: driverId },
       { autoCommit: true },
     ),
   );

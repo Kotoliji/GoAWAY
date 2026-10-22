@@ -9,7 +9,7 @@ import { parse } from '../common/validate';
 export const authRouter = Router();
 
 // Public sign-up creates the CLIENT / DRIVER row together with the login.
-// ADMIN accounts are not self-service (seeded by database/05_app/04_demo_users.sql).
+// ADMIN accounts are not self-service (seeded by database/05_app/05_demo_users.sql).
 const personFields = {
   email: z.string().trim().toLowerCase().email(),
   password: z.string().min(6),

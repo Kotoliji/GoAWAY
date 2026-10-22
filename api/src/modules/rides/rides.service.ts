@@ -16,6 +16,11 @@ export interface RideRow {
   DRIVER_LAT: number | null;
   DRIVER_LONG: number | null;
   DRIVER_RATING: number | null;
+  CLIENT_NAME: string | null;
+  CLIENT_LAT: number | null;
+  CLIENT_LONG: number | null;
+  VEHICLE_PLATE: string | null;
+  VEHICLE_DESC: string | null;
 }
 
 export interface NewRide {
@@ -26,6 +31,27 @@ export interface NewRide {
   destLong?: number;
   vehicleType: 'AI' | 'NOAI';
   fuelType?: string;
+}
+
+// Tariff for a request: its requested fuel type, else the assigned vehicle's.
+const TARIFF_COLS = `
+  (SELECT base_fee     FROM tariff t WHERE t.fuel_type = NVL(tr.fuel_type, v.fuel_type) AND ROWNUM = 1) AS base_fee,
+  (SELECT price_per_km FROM tariff t WHERE t.fuel_type = NVL(tr.fuel_type, v.fuel_type) AND ROWNUM = 1) AS price_per_km`;
+
+function fareFor(km: number, base: number | null, perKm: number | null): number {
+  return Math.round(((base ?? 2.5) + (perKm ?? 0.5) * km) * 100) / 100;
+}
+
+/** Store the client's current position: aloca_motorista and FN_REQUEST_DISTANCE
+ *  use it as the pickup point. */
+export async function setClientLocation(clientId: number, lat: number, long: number): Promise<void> {
+  await withConn((c) =>
+    c.execute(
+      `UPDATE client SET latitude = :lat, longitude = :lng WHERE client_id = :id`,
+      { lat, lng: long, id: clientId },
+      { autoCommit: true },
+    ),
+  );
 }
 
 /** Insert a new trip_request (status REQUESTED). Returns the new request_id. */
@@ -76,9 +102,16 @@ export async function getRide(requestId: number): Promise<RideRow | null> {
               d.name      AS driver_name,
               d.latitude  AS driver_lat,
               d.longitude AS driver_long,
-              d.avg_score AS driver_rating
+              d.avg_score AS driver_rating,
+              c.name      AS client_name,
+              c.latitude  AS client_lat,
+              c.longitude AS client_long,
+              v.plate     AS vehicle_plate,
+              TRIM(v.brand || ' ' || v.model) AS vehicle_desc
          FROM trip_request tr
+         JOIN client c ON c.client_id = tr.client_id
          LEFT JOIN driver d ON d.driver_id = tr.driver_id
+         LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
         WHERE tr.request_id = :id`,
       { id: requestId },
     );
@@ -123,19 +156,16 @@ export async function estimate(requestId: number): Promise<Estimate | null> {
       BASE_FEE: number | null;
       PRICE_PER_KM: number | null;
     }>(
-      `SELECT FN_REQUEST_DISTANCE(:id) AS km,
-              (SELECT base_fee     FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS base_fee,
-              (SELECT price_per_km FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS price_per_km
+      `SELECT FN_REQUEST_DISTANCE(:id) AS km, ${TARIFF_COLS}
          FROM trip_request tr
+         LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
         WHERE tr.request_id = :id`,
       { id: requestId },
     );
     const row = r.rows?.[0];
     if (!row) return null;
-    const km = row.KM;
-    const base = row.BASE_FEE ?? 2.5;
-    const perKm = row.PRICE_PER_KM ?? 0.5;
-    const fare = km != null ? Math.round((base + perKm * km) * 100) / 100 : null;
+    const km = row.KM != null ? Math.round(row.KM * 100) / 100 : null;
+    const fare = km != null ? fareFor(km, row.BASE_FEE, row.PRICE_PER_KM) : null;
     return { km, fare };
   });
 }
@@ -145,7 +175,7 @@ export async function estimate(requestId: number): Promise<Estimate | null> {
 export async function pickup(requestId: number, driverId: number): Promise<boolean> {
   return withConn(async (c) => {
     const up = await c.execute(
-      `UPDATE trip_request SET status = 'PICKED_UP'
+      `UPDATE trip_request SET status = 'PICKED_UP', pickup_date = SYSDATE
         WHERE request_id = :id AND driver_id = :drv AND status = 'ACCEPTED'`,
       { id: requestId, drv: driverId },
     );
@@ -159,8 +189,10 @@ export async function pickup(requestId: number, driverId: number): Promise<boole
     );
     const vehicleId = v.rows?.[0]?.VEHICLE_ID ?? null;
     await c.execute(
-      `INSERT INTO trip (request_id, driver_id, vehicle_id, start_date, pickup_date, status)
-       VALUES (:id, :drv, :veh, SYSDATE, SYSDATE, 'IN_PROGRESS')`,
+      `INSERT INTO trip (request_id, driver_id, vehicle_id, start_date, pickup_date,
+                         pickup_lat, pickup_long, status)
+       SELECT :id, :drv, :veh, SYSDATE, SYSDATE, latitude, longitude, 'IN_PROGRESS'
+         FROM driver WHERE driver_id = :drv`,
       { id: requestId, drv: driverId, veh: vehicleId },
     );
     await c.execute(`UPDATE driver SET status = 'ON_TRIP' WHERE driver_id = :drv`, {
@@ -173,31 +205,29 @@ export async function pickup(requestId: number, driverId: number): Promise<boole
 
 /** Driver ends the trip: marks the TRIP COMPLETED (fires viagem_Terminada, which
  *  frees the driver and updates shift totals) and the request COMPLETED.
- *  If no fare is supplied it is computed from distance and the tariff. */
+ *  Distance defaults to FN_REQUEST_DISTANCE; the fare to distance x tariff. */
 export async function complete(
   requestId: number,
   driverId: number,
-  distanceKm: number,
+  distanceKm: number | null,
   value: number | null,
 ): Promise<boolean> {
   return withConn(async (c) => {
-    let fare = value;
-    if (fare == null) {
-      const t = await c.execute<{ BASE: number | null; PERKM: number | null }>(
-        `SELECT (SELECT base_fee     FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS base,
-                (SELECT price_per_km FROM tariff WHERE fuel_type = tr.fuel_type AND ROWNUM = 1) AS perkm
-           FROM trip_request tr WHERE request_id = :id`,
-        { id: requestId },
-      );
-      const base = t.rows?.[0]?.BASE ?? 2.5;
-      const perKm = t.rows?.[0]?.PERKM ?? 0.5;
-      fare = Math.round((base + perKm * distanceKm) * 100) / 100;
-    }
+    const t = await c.execute<{ KM: number | null; BASE_FEE: number | null; PRICE_PER_KM: number | null }>(
+      `SELECT FN_REQUEST_DISTANCE(:id) AS km, ${TARIFF_COLS}
+         FROM trip_request tr
+         LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
+        WHERE tr.request_id = :id`,
+      { id: requestId },
+    );
+    const row = t.rows?.[0];
+    const dist = Math.round((distanceKm ?? row?.KM ?? 0) * 100) / 100;
+    const fare = value ?? fareFor(dist, row?.BASE_FEE ?? null, row?.PRICE_PER_KM ?? null);
     const up = await c.execute(
       `UPDATE trip
           SET end_date = SYSDATE, distance_km = :dist, value = :val, status = 'COMPLETED'
         WHERE request_id = :id AND driver_id = :drv AND status = 'IN_PROGRESS'`,
-      { dist: distanceKm, val: fare, id: requestId, drv: driverId },
+      { dist, val: fare, id: requestId, drv: driverId },
     );
     if ((up.rowsAffected ?? 0) === 0) {
       await c.rollback();
@@ -227,4 +257,57 @@ export async function rate(
       { autoCommit: true },
     ),
   );
+}
+
+/** Assigned driver declines (PL/SQL app_driver_reject: logs REJECTED and
+ *  immediately offers the request to the next suitable driver). */
+export async function reject(requestId: number, driverId: number, radiusKm = 50): Promise<void> {
+  await withConn((c) =>
+    c.execute(
+      `BEGIN app_driver_reject(:req, :drv, :radius); END;`,
+      { req: requestId, drv: driverId, radius: radiusKm },
+      { autoCommit: true },
+    ),
+  );
+}
+
+/** Recent requests still waiting for a driver (oldest first). */
+export async function pendingRequestIds(maxAgeMin = 30): Promise<number[]> {
+  return withConn(async (c) => {
+    const r = await c.execute<{ REQUEST_ID: number }>(
+      `SELECT request_id FROM trip_request
+        WHERE status = 'REQUESTED' AND driver_id IS NULL
+          AND request_date > SYSDATE - :age / 1440
+        ORDER BY request_date`,
+      { age: maxAgeMin },
+    );
+    return (r.rows ?? []).map((x) => x.REQUEST_ID);
+  });
+}
+
+/** Requests a driver holds but has not started (released if they go offline). */
+export async function heldRequestIds(driverId: number): Promise<number[]> {
+  return withConn(async (c) => {
+    const r = await c.execute<{ REQUEST_ID: number }>(
+      `SELECT request_id FROM trip_request
+        WHERE driver_id = :drv AND status IN ('ASSIGNED', 'ACCEPTED')`,
+      { drv: driverId },
+    );
+    return (r.rows ?? []).map((x) => x.REQUEST_ID);
+  });
+}
+
+/** The driver's current live request, if any. */
+export async function currentRideId(driverId: number): Promise<number | null> {
+  return withConn(async (c) => {
+    const r = await c.execute<{ REQUEST_ID: number }>(
+      `SELECT request_id FROM (
+         SELECT request_id FROM trip_request
+          WHERE driver_id = :drv AND status IN ('ASSIGNED', 'ACCEPTED', 'PICKED_UP')
+          ORDER BY request_date DESC)
+        WHERE ROWNUM = 1`,
+      { drv: driverId },
+    );
+    return r.rows?.[0]?.REQUEST_ID ?? null;
+  });
 }

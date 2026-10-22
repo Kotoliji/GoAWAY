@@ -2,12 +2,15 @@ import { Server, Socket } from 'socket.io';
 import { verifyAccess, AccessPayload } from '../auth/jwt';
 import { getRide } from '../modules/rides/rides.service';
 import { updateDriverLocation } from './location.service';
+import { clientInbox, driverInbox, setNotifier } from './notify';
 
 const driverRoom = (driverId: number) => `driver:${driverId}`;
 
 /** Wire up the realtime layer: JWT-authenticated sockets, driver location
  *  streaming, and rider subscriptions to their assigned driver. */
 export function setupSocket(io: Server): void {
+  setNotifier(io);
+
   // Authenticate every socket from the JWT in the handshake.
   io.use((socket, next) => {
     const token = socket.handshake.auth?.token as string | undefined;
@@ -22,6 +25,10 @@ export function setupSocket(io: Server): void {
 
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user as AccessPayload;
+
+    // Personal inbox for ride:updated pushes (see notify.ts).
+    if (user.clientId != null) socket.join(clientInbox(user.clientId));
+    if (user.driverId != null) socket.join(driverInbox(user.driverId));
 
     // A driver streams its GPS position.
     socket.on('driver:location', async (p: { lat: number; long: number }) => {

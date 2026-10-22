@@ -4,11 +4,16 @@ import * as svc from './rides.service';
 import { requireAuth, requireRole } from '../../auth/auth.middleware';
 import { HttpError } from '../../common/errors';
 import { parse } from '../../common/validate';
+import { notifyRide } from '../../realtime/notify';
+import { tryAllocate } from './dispatch';
 
 export const ridesRouter = Router();
 
 const createSchema = z.object({
   originAddress: z.string().max(200).optional(),
+  // rider's current position = pickup point (stored on the client row)
+  originLat: z.coerce.number().min(-90).max(90).optional(),
+  originLong: z.coerce.number().min(-180).max(180).optional(),
   destName: z.string().max(200).optional(),
   destLat: z.coerce.number().optional(),
   destLong: z.coerce.number().optional(),
@@ -36,6 +41,9 @@ ridesRouter.post('/', requireAuth, requireRole('CLIENT'), async (req, res, next)
     const b = parse(createSchema, req.body);
     const clientId = req.user!.clientId;
     if (clientId == null) throw new HttpError(400, 'Account is not linked to a client');
+    if (b.originLat != null && b.originLong != null) {
+      await svc.setClientLocation(clientId, b.originLat, b.originLong);
+    }
 
     const id = await svc.createRequest({
       clientId,
@@ -47,15 +55,11 @@ ridesRouter.post('/', requireAuth, requireRole('CLIENT'), async (req, res, next)
       fuelType: b.fuelType,
     });
 
-    let allocated = true;
-    try {
-      await svc.allocate(id, b.radiusKm);
-    } catch (e: any) {
-      if (e?.errorNum === 20810) allocated = false; // no drivers available — keep request pending
-      else throw e;
-    }
+    // no driver available -> the request stays REQUESTED until one comes online
+    const allocated = await tryAllocate(id, b.radiusKm);
 
     const ride = await svc.getRide(id);
+    if (allocated) notifyRide(ride);
     res.status(201).json({ allocated, ride });
   } catch (err) {
     next(err);
@@ -93,7 +97,9 @@ ridesRouter.post('/:id/cancel', requireAuth, requireRole('CLIENT'), async (req, 
     const ride = await loadAuthorized(req, id); // also enforces ownership for clients
     if (ride.CLIENT_ID !== req.user!.clientId) throw new HttpError(403, 'Forbidden');
     await svc.cancel(id);
-    res.json({ ride: await svc.getRide(id) });
+    const updated = await svc.getRide(id);
+    notifyRide(updated, ride.DRIVER_ID != null ? [ride.DRIVER_ID] : []);
+    res.json({ ride: updated });
   } catch (err) {
     next(err);
   }
@@ -108,7 +114,9 @@ ridesRouter.post('/:id/accept', requireAuth, requireRole('DRIVER'), async (req, 
     if (ride.DRIVER_ID !== req.user!.driverId) throw new HttpError(403, 'Not your ride');
     const ok = await svc.accept(id, req.user!.driverId!);
     if (!ok) throw new HttpError(409, 'Ride is not in an acceptable state');
-    res.json({ ride: await svc.getRide(id) });
+    const updated = await svc.getRide(id);
+    notifyRide(updated);
+    res.json({ ride: updated });
   } catch (err) {
     next(err);
   }
@@ -123,14 +131,33 @@ ridesRouter.post('/:id/pickup', requireAuth, requireRole('DRIVER'), async (req, 
     if (ride.DRIVER_ID !== req.user!.driverId) throw new HttpError(403, 'Not your ride');
     const ok = await svc.pickup(id, req.user!.driverId!);
     if (!ok) throw new HttpError(409, 'Ride must be ACCEPTED to pick up');
-    res.json({ ride: await svc.getRide(id) });
+    const updated = await svc.getRide(id);
+    notifyRide(updated);
+    res.json({ ride: updated });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// POST /rides/:id/reject — assigned driver declines; offered to the next driver
+ridesRouter.post('/:id/reject', requireAuth, requireRole('DRIVER'), async (req, res, next) => {
+  try {
+    const id = Number(req.params.id);
+    const me = req.user!.driverId!;
+    const ride = await svc.getRide(id);
+    if (!ride) throw new HttpError(404, 'Ride not found');
+    if (ride.DRIVER_ID !== me) throw new HttpError(403, 'Not your ride');
+    await svc.reject(id, me);
+    notifyRide(await svc.getRide(id), [me]);
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }
 });
 
 const completeSchema = z.object({
-  distanceKm: z.coerce.number().nonnegative(),
+  // omitted -> straight-line request distance (FN_REQUEST_DISTANCE)
+  distanceKm: z.coerce.number().nonnegative().optional(),
   value: z.coerce.number().nonnegative().optional(),
 });
 
@@ -142,9 +169,11 @@ ridesRouter.post('/:id/complete', requireAuth, requireRole('DRIVER'), async (req
     const ride = await svc.getRide(id);
     if (!ride) throw new HttpError(404, 'Ride not found');
     if (ride.DRIVER_ID !== req.user!.driverId) throw new HttpError(403, 'Not your ride');
-    const ok = await svc.complete(id, req.user!.driverId!, b.distanceKm, b.value ?? null);
+    const ok = await svc.complete(id, req.user!.driverId!, b.distanceKm ?? null, b.value ?? null);
     if (!ok) throw new HttpError(409, 'Trip must be in progress to complete');
-    res.json({ ride: await svc.getRide(id) });
+    const updated = await svc.getRide(id);
+    notifyRide(updated);
+    res.json({ ride: updated, estimate: await svc.estimate(id) });
   } catch (err) {
     next(err);
   }

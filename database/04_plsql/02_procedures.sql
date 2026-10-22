@@ -90,6 +90,15 @@ BEGIN
                      AND ve.vehicle_type = v_vtype
                )
                -- has not rejected this request before
+               -- not already holding another live request (assignment does
+               -- not change driver.status, so AVAILABLE alone is not enough)
+               AND NOT EXISTS (
+                  SELECT 1
+                    FROM trip_request x
+                   WHERE x.driver_id = d.driver_id
+                     AND x.request_id <> cod_pedido_viagem
+                     AND x.status IN ( 'ASSIGNED', 'ACCEPTED', 'PICKED_UP' )
+               )
                AND NOT EXISTS (
                   SELECT 1
                     FROM trip_process tp

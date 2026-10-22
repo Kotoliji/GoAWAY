@@ -216,7 +216,7 @@ SHOW ERRORS
 -- proposed_value, the same convention used by VIEW_D in checkpoint 2).
 -- The status change itself is logged by the update_pedido trigger.
 -- Raises -20815 if the request does not exist, -20821 if it cannot be
--- cancelled (already completed or already cancelled).
+-- cancelled (passenger already picked up, completed or already cancelled).
 -- ============================================================================
 -- FN_CANCEL_FEE(p_request_id): what cancelling would cost right now.
 -- Free while no driver has been assigned; afterwards the cancellation fee of
@@ -268,7 +268,9 @@ BEGIN
          raise_application_error(-20815, 'Codigo pedido de viagem inexistente: ' || p_request_id);
    END;
 
-   IF v_status IN ( 'COMPLETED', 'CANCELLED' ) THEN
+   -- Once the passenger is on board the trip can only be completed: cancelling
+   -- would leave the TRIP in progress and the driver stuck ON_TRIP.
+   IF v_status IN ( 'COMPLETED', 'CANCELLED', 'PICKED_UP' ) THEN
       raise_application_error(-20821, 'Pedido nao pode ser cancelado (estado ' || v_status || ').');
    END IF;
 

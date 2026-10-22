@@ -9,7 +9,9 @@
  * and then decline), drive to the pickup, then to the destination, and finish;
  * clients rate the trip. Everything goes through the public API, so the
  * PL/SQL rules, pushes and the admin live map all run for real.
- * Ctrl+C (or SIM_SECONDS elapsing) takes the drivers offline again.
+ * Ctrl+C (or SIM_SECONDS elapsing) cancels open requests and puts every driver
+ * back as it was: originally available drivers return to their position,
+ * the others go offline.
  */
 import { io, Socket } from 'socket.io-client';
 
@@ -65,7 +67,8 @@ class SimDriver {
   wanderTo: Pos = around(CENTER, 3);
   decideAt = 0;
   socket!: Socket;
-  constructor(public name: string, public token: string) {}
+  /** `home`: where an originally available driver is put back on stop. */
+  constructor(public name: string, public token: string, public home: Pos | null) {}
 
   async start() {
     this.socket = io(API, { transports: ['websocket'], auth: { token: this.token } });
@@ -121,7 +124,13 @@ class SimDriver {
   }
 
   async stop() {
-    await call('POST', '/driver/offline', this.token).catch(() => undefined);
+    // finish a trip in progress first (it can no longer be cancelled)
+    await this.sync();
+    if (this.ride?.STATUS === 'PICKED_UP') {
+      await call('POST', `/rides/${this.ride.REQUEST_ID}/complete`, this.token, {}).catch(() => undefined);
+    }
+    if (this.home) await call('POST', '/driver/online', this.token, this.home).catch(() => undefined);
+    else await call('POST', '/driver/offline', this.token).catch(() => undefined);
     this.socket.close();
   }
 }
@@ -173,7 +182,9 @@ class SimClient {
 
 async function main() {
   const admin = await login('admin@tvdept.pt', 'demo123');
-  const { drivers } = await call<{ drivers: { NAME: string; EMAIL: string; STATUS: string }[] }>('GET', '/admin/drivers', admin);
+  const { drivers } = await call<{ drivers: { DRIVER_ID: number; NAME: string; EMAIL: string; STATUS: string }[] }>('GET', '/admin/drivers', admin);
+  const live = await call<{ drivers: { DRIVER_ID: number; LATITUDE: number; LONGITUDE: number }[] }>('GET', '/admin/live', admin);
+  const homes = new Map(live.drivers.map((d) => [d.DRIVER_ID, { lat: d.LATITUDE, long: d.LONGITUDE }]));
   // Every driver already AVAILABLE must be driven (aloca_motorista may pick any
   // of them), topped up with offline ones up to SIM_DRIVERS.
   const available = drivers.filter((d) => d.STATUS === 'AVAILABLE');
@@ -182,7 +193,8 @@ async function main() {
 
   const simDrivers: SimDriver[] = [];
   for (const d of pool) {
-    const sd = new SimDriver(d.NAME, await login(d.EMAIL, 'demo123'));
+    const home = d.STATUS === 'AVAILABLE' ? homes.get(d.DRIVER_ID) ?? null : null;
+    const sd = new SimDriver(d.NAME, await login(d.EMAIL, 'demo123'), home);
     await sd.start();
     simDrivers.push(sd);
   }
@@ -201,7 +213,7 @@ async function main() {
   const stop = async () => {
     if (!running) return;
     running = false;
-    log('stopping: cancelling open requests, taking drivers offline…');
+    log('stopping: cancelling open requests, restoring drivers…');
     await Promise.all(simClients.map((c) => c.stop()));
     await Promise.all(simDrivers.map((d) => d.stop()));
     process.exit(0);

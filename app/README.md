@@ -1,7 +1,8 @@
 # TVDEPT Mobile App
 
-Cross-platform (iOS + Android) ride-hailing app built with **Expo + React Native
-+ TypeScript**, talking to the TVDEPT API (`../api`).
+Cross-platform (iOS + Android) ride-hailing app built with **Expo SDK 58 +
+React Native 0.88 + React 19 + TypeScript**, talking to the TVDEPT API (`../api`).
+One app, two roles: the screens follow the signed-in account (rider or driver).
 
 ## What's here
 
@@ -34,19 +35,34 @@ app/
 
 ## Run it
 
-1. Start the API (`../api`, `npm run dev`).
-2. Set **`src/config.ts` → `API_BASE_URL`** to your computer's LAN IP, e.g.
-   `http://192.168.1.20:3000` (a phone can't reach `localhost`; Android emulator
-   uses `http://10.0.2.2:3000`).
-3. Install and start Expo:
-   ```bash
-   npm install
-   npx expo start
-   ```
-4. Open in **Expo Go** (scan the QR) or an emulator (`a` / `i`).
+Needs Node.js 22+ and the stack running (`docker compose up -d` in the repo root).
 
-> First-run tip: register a `CLIENT` linked to an existing `clientId` (e.g. `1`)
-> so `POST /rides` has a real client behind it.
+```bash
+npm install
+npx expo start          # scan the QR code with Expo Go (phone on the same Wi-Fi)
+```
+
+**API address** (`src/config.ts`): in development the app reuses the address of
+the machine serving the bundle and expects the API on port 3000 there — nothing
+to configure. Set `EXPO_PUBLIC_API_URL` to override it (the Android emulator
+falls back to `http://10.0.2.2:3000`).
+
+Demo logins (password `demo123`): rider `jose.lopes@email.com`, driver
+`joao.marques@email.com` — or register a new rider / driver in the app.
+
+### Android APK
+
+`eas.json` has a `preview` profile that builds an installable APK in the Expo
+cloud (free account needed). Put your computer's LAN address in
+`build.preview.env.EXPO_PUBLIC_API_URL`, then:
+
+```bash
+npx eas-cli login
+npx eas-cli build -p android --profile preview
+```
+
+Plain `http://` to the LAN is allowed in that build (`expo-build-properties`,
+`usesCleartextTraffic`) because the demo API has no TLS.
 
 ## Next milestones
 

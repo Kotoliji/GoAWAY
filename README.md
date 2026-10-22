@@ -1,149 +1,225 @@
-# TVDEPT — Ride-Hailing Database (Oracle / PL-SQL)
+# GoAWAY — TVDEPT ride-hailing platform
 
-A relational database for a **TVDE / Uber-like individual passenger-transport
-platform**. It models drivers, vehicles, clients, trip requests, trips, ratings
-and payments, and ships a complete **PL/SQL** layer: distance/assignment/payment
-logic, integrity and lifecycle triggers, exception handling, and physical-storage
-tuning for the largest tables.
+[![CI](https://github.com/Kotoliji/GoAWAY/actions/workflows/ci.yml/badge.svg)](https://github.com/Kotoliji/GoAWAY/actions/workflows/ci.yml)
 
-Built and tested on **Oracle Database 21c XE**.
+A full-stack, Uber-style ride-hailing platform built around an **Oracle database
+whose business rules live in PL/SQL**: driver assignment, fares, cancellation
+fees, ratings, payouts and driver deactivation are procedures, functions and
+triggers. On top of it:
+
+- a **Node.js + TypeScript API** with JWT auth and real-time pushes (Socket.IO),
+- a **React Native (Expo) mobile app** for riders and drivers,
+- a **React admin panel** with KPIs, a live map, payouts and the analytical views,
+- a **traffic simulator** that makes the whole system move for a demo.
+
+![Live map: drivers (green available, blue on trip) and rides from pickup to destination, streamed in real time](docs/screenshots/live-map.gif)
+
+| Admin dashboard | Live map |
+|---|---|
+| ![Dashboard](docs/screenshots/admin-dashboard.png) | ![Live map](docs/screenshots/admin-live-map.png) |
+| **Drivers — payouts, disable / re-enable** | **Reports — the SQL analytical views** |
+| ![Drivers](docs/screenshots/admin-drivers.png) | ![Reports](docs/screenshots/admin-reports.png) |
 
 ---
 
+## What it does
+
+**Rider (mobile)** — sees free cars nearby, picks a destination on the map and a
+class (Standard / Smart), gets the **fare range and nearest-car ETA before
+ordering**, follows the driver's car live on the map, can cancel (free until a
+driver is assigned, fee shown before confirming), rates the trip, and keeps a
+trip history.
+
+**Driver (mobile)** — goes online, receives requests instantly (push +
+vibration), accepts or declines (the request is re-offered to the next driver),
+picks the passenger up and completes the trip; GPS is streamed while online and
+today's earnings are always visible.
+
+**Admin (browser)** — KPIs and monthly trends, a live map of every driver and
+ride, all requests, drivers with unpaid balances, one-click payouts
+(`paga_aos_motoristas`), disabling drivers or running the low-rating
+deactivation rule (`cancela_motoristas`), and the 13 analytical SQL views.
+
+## Architecture
+
+```mermaid
+flowchart LR
+  subgraph Clients
+    M["Mobile app<br/>Expo · React Native<br/>rider + driver"]
+    W["Admin panel<br/>React · Vite"]
+  end
+  subgraph API["API · Node.js + TypeScript"]
+    R["Express REST<br/>JWT · zod"]
+    S["Socket.IO<br/>ride:updated · driver:moved"]
+  end
+  subgraph DB["Oracle 21c XE"]
+    P["PL/SQL<br/>procedures · functions · triggers"]
+    T["14 tables · 13 views"]
+  end
+  M -- HTTP/JSON --> R
+  W -- HTTP/JSON --> R
+  M <-- WebSocket --> S
+  W <-- WebSocket --> S
+  R -- "node-oracledb (thin)" --> P
+  S --> P
+  P --> T
+```
+
+The API stays thin: it validates input, calls the PL/SQL layer and pushes the
+result to whoever is affected. Every socket joins a personal room (and admins a
+shared one), so a status change reaches exactly the rider, the driver and the
+admin panel.
+
+### Where the business logic lives
+
+| Feature | Database object |
+|---|---|
+| Assign the nearest free driver of the right vehicle class, skipping drivers who declined or already hold a ride | `aloca_motorista` |
+| Decline a request and re-offer it immediately | `app_driver_reject` |
+| Go offline: refused mid-trip, held requests go back to the queue | `update_status` trigger |
+| Trip end: free the driver, update shift totals | `viagem_Terminada` trigger |
+| Fare quote before ordering (distance, fare range, drivers nearby) | `app_quote` |
+| Cancellation fee: free until assigned, then the vehicle's tariff | `FN_CANCEL_FEE`, `SP_CANCEL_REQUEST` |
+| Ratings: validated, one per trip, driver score updated | `cliente_Avalia`, `TRG_DRIVER_RATING_UPDATE`, `uq_client_rating_trip` |
+| Sign-up: client, or driver + vehicle, with the login in one transaction | `app_register_client`, `app_register_driver` |
+| Payouts net of commission | `paga_aos_motoristas` |
+| Deactivate persistently 1-star drivers | `cancela_motoristas` |
+| Audit of every request status change | `update_pedido` trigger |
+| Status-transition and date integrity | `TRG_REQUEST_STATUS_GUARD`, `05_integrity.sql` |
+
 ## Tech stack
 
-- **Oracle Database** 21c XE (compatible with 11g/19c)
-- **SQL** (DDL + queries/views)
-- **PL/SQL** (functions, procedures, triggers, transactions, exceptions)
-- Data model authored in **dbdiagram.io** (DBML) and **draw.io**
+| Layer | Technologies |
+|---|---|
+| Database | Oracle 21c XE, SQL, PL/SQL |
+| API | Node.js 24, TypeScript, Express, node-oracledb (thin mode), Socket.IO, JWT + rotating refresh tokens, bcrypt, zod |
+| Mobile | Expo SDK 58, React Native 0.88, React 19, React Navigation 7, react-native-maps, expo-location, expo-secure-store |
+| Admin | React 18, Vite, React Router, Recharts, Leaflet / OpenStreetMap |
+| Ops | Docker Compose, nginx, GitHub Actions |
+
+---
+
+## Quick start
+
+Requires Docker. One command builds the database, the API and the admin panel:
+
+```bash
+docker compose up -d --build --wait     # first run ~2 min: builds the schema
+```
+
+| | URL | Sign in |
+|---|---|---|
+| Admin panel | http://localhost:8080 | `admin@tvdept.pt` / `demo123` |
+| API | http://localhost:3000/health | — |
+
+**Make it move** — run the traffic simulator (needs Node.js 22+):
+
+```bash
+cd api && npm install && npm run simulate     # Ctrl+C to stop
+```
+
+Seeded drivers drive around Coimbra, simulated clients order rides, drivers
+accept, pick up and drop off, clients rate — all through the public API, so the
+dashboard and live map update in real time.
+
+**Mobile app** — on a phone with [Expo Go](https://expo.dev/go), on the same
+Wi-Fi as the computer:
+
+```bash
+cd app && npm install && npx expo start       # scan the QR code
+```
+
+The app finds the API on the computer that serves it; no IP to configure. Demo
+logins (password `demo123`): rider `jose.lopes@email.com`, driver
+`joao.marques@email.com` — or create an account in the app.
+
+A standalone Android APK can be built with EAS (`app/eas.json`, profile
+`preview`): `npx eas-cli build -p android --profile preview`.
+
+Reset everything to a clean database: `docker compose down -v`.
+
+## Testing
+
+| What | How |
+|---|---|
+| PL/SQL smoke tests — every function, procedure and trigger, happy path and exceptions, all rolled back | `docker compose exec -w /opt/tvdept db bash -c "echo exit \| sqlplus -s tvdept/tvdept@//localhost/XEPDB1 @tests/smoke_tests.sql"` |
+| End-to-end tests — 65 checks over HTTP and Socket.IO: driver, rider, dispatch and admin flows | `cd api && npm run test:e2e` (stack running) |
+| CI — typecheck/build of API, admin and mobile app, `expo-doctor`; then Oracle + API in Docker, schema validity, smoke tests and the e2e suite | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) |
+
+The e2e suites each run in a different Portuguese city, so they never pick up
+each other's drivers or the simulator's.
 
 ---
 
 ## Repository structure
 
 ```
-tvdept/
-├── docker-compose.yml           # Oracle XE + API, one command
-├── docker/db-init/              # builds the schema on the DB's first start
-├── api/                         # Node + TypeScript + Express backend (+ demo simulator)
-├── app/                         # Expo (React Native) mobile app: rider + driver
-├── admin/                       # React + Vite admin panel (browser)
-├── database/
-│   ├── 00_setup_user.sql        # create the application schema/user (run as DBA)
-│   ├── 01_schema/tables.sql     # 14 tables + PK/FK/CHECK constraints
-│   ├── 02_data/insert_data.sql  # sample dataset
-│   ├── 03_views/views.sql       # analytical views
-│   ├── 04_plsql/
-│   │   ├── 00_schema_changes.sql   # sequences, shift counters, status values
-│   │   ├── 01_functions.sql        # distance / billing / lookup functions
-│   │   ├── 02_procedures.sql       # driver assignment, payments, deactivation
-│   │   ├── 03_triggers.sql         # availability, rating, trip-end, audit
-│   │   ├── 04_extra_objects.sql    # extra earnings/geo objects
-│   │   ├── 05_integrity.sql        # value/date/temporal integrity rules
-│   │   └── 06_physical_params.sql  # storage parameters for the largest tables
-│   ├── install.sql              # master script — builds everything in order
-│   └── tests/smoke_tests.sql    # exercises every object (rolls back)
-├── model/
-│   ├── tvdept.dbml              # physical table model (dbdiagram.io)
-│   └── er-diagram.drawio        # ER diagram (draw.io)
-└── tools/
-    └── generate_er.py           # regenerates the draw.io ER diagram
+├── database/                 Oracle schema, data, views, PL/SQL (see below)
+├── api/                      Express + TypeScript API, Socket.IO, simulator, e2e tests
+├── app/                      Expo / React Native mobile app (rider + driver)
+├── admin/                    React + Vite admin panel
+├── docker-compose.yml        Oracle XE + API + admin
+├── docker/db-init/           builds the schema on the database's first start
+├── model/                    data model (DBML) and ER diagram (draw.io)
+├── docs/screenshots/         images used in this README
+└── .github/workflows/ci.yml  CI
 ```
 
----
+Each part has its own README: [`api/`](api/README.md) (endpoints, events),
+[`app/`](app/README.md), [`admin/`](admin/README.md).
 
-## Quick start (Docker — recommended)
+## The database
 
-Requires only Docker. Starts Oracle XE, builds the whole schema on first run,
-then starts the API on http://localhost:3000 and the admin panel on
-http://localhost:8080 (sign in as `admin@tvdept.pt` / `demo123`).
+```
+database/
+├── 00_setup_user.sql        application user (manual installs; Docker creates it)
+├── 01_schema/tables.sql     14 tables + PK/FK/CHECK constraints
+├── 02_data/insert_data.sql  sample dataset (Coimbra region)
+├── 03_views/views.sql       13 analytical views
+├── 04_plsql/                functions, procedures, triggers, integrity, storage tuning
+├── 05_app/                  application layer: auth tables, sign-up, driver,
+│                            rider, admin procedures, demo logins
+├── install.sql              builds everything in order, reports invalid objects
+└── tests/smoke_tests.sql    exercises every object (rolls back)
+```
+
+**Schema:** client, driver, vehicle, driver_vehicle, tariff, driver_schedule,
+location, trip_request, trip_preferences, trip, client_rating, driver_rating,
+driver_payment, trip_process — plus app_user, refresh_token and device for the
+application.
+
+**Functions:** `distancia_linear` (Haversine distance), `motorista_mais_proximo`,
+`valor_medio_diario`, `data_ultima_viagem`, `distancia_entre`,
+`distancia_das_viagens`, `FN_DRIVER_MONTHLY_NET`, `FN_REQUEST_DISTANCE`,
+`FN_CANCEL_FEE`.
+
+**Procedures:** `aloca_motorista`, `paga_aos_motoristas`, `cancela_motoristas`,
+`SP_REGISTER_DRIVER_PAYMENT`, `SP_CANCEL_REQUEST`, and the application
+procedures `app_register_*`, `app_driver_*`, `app_quote`,
+`app_admin_set_driver_status`.
+
+**Triggers:** `update_status`, `cliente_Avalia`, `viagem_Terminada`,
+`update_pedido`, `TRG_DRIVER_RATING_UPDATE`, `TRG_REQUEST_STATUS_GUARD`, and
+date-integrity triggers.
+
+**Integrity & tuning:** CHECK constraints for money, distances, durations, date
+ordering and payment consistency (`net = gross − commission`); PCTFREE/INITRANS
+storage parameters for the fastest-growing tables.
+
+**Manual install** (without Docker), on Oracle 21c XE:
 
 ```bash
-docker compose up -d --build
-docker compose ps                 # wait until db is "healthy" (~1-3 min first time)
-curl http://localhost:3000/health
+sqlplus / as sysdba @database/00_setup_user.sql
+sqlplus tvdept/tvdept @database/install.sql
+sqlplus tvdept/tvdept @database/tests/smoke_tests.sql
 ```
-
-Run the smoke tests (all changes rolled back):
-```bash
-docker compose exec -w /opt/tvdept db bash -c "echo exit | sqlplus -s tvdept/tvdept@//localhost/XEPDB1 @tests/smoke_tests.sql"
-```
-
-Reset the database to a clean state: `docker compose down -v`.
-
-For API development with hot reload, start only the database
-(`docker compose up -d db`) and run the API locally (see `api/README.md`).
-
-To see live activity on the admin dashboard and map, run the demo traffic
-simulator: `cd api && npm install && npm run simulate`.
-
-## Quick start (manual Oracle install)
-
-1. **Create the application user** (connected as a DBA):
-   ```bash
-   sqlplus / as sysdba @database/00_setup_user.sql
-   ```
-2. **Build the whole database** (connected as the app user):
-   ```bash
-   sqlplus tvdept/tvdept @database/install.sql
-   ```
-   `install.sql` runs schema → data → views → PL/SQL in order, then reports any
-   invalid objects (should be none).
-3. **Run the demo / smoke tests** (all changes are rolled back):
-   ```bash
-   sqlplus tvdept/tvdept @database/tests/smoke_tests.sql
-   ```
-
-> The default password (`tvdept`) is for local use only — change it before any
-> real deployment.
-
----
-
-## What's inside
-
-**Schema (14 tables):** client, driver, vehicle, driver_vehicle, tariff,
-driver_schedule, location, trip_request, trip_preferences, trip, client_rating,
-driver_rating, driver_payment, trip_process.
-
-**Views:** analytical queries over trips, drivers, clients and ratings
-(activity by weekday, revenue per driver, cancellations by age group, driver
-proximity, rating distributions, smart-vehicle stats, regional pricing, …).
-
-**Functions**
-- `distancia_linear` — great-circle (Haversine) distance between two points
-- `motorista_mais_proximo` — nearest available driver within a radius
-- `valor_medio_diario` — amount billed by a driver in a period
-- `data_ultima_viagem` — last trip with a given client on a given vehicle
-- `distancia_entre` — distance between a driver and a client
-- `distancia_das_viagens` — distance driven in the last active shift
-- plus: monthly net earnings, estimated trip-request distance
-
-**Procedures**
-- `aloca_motorista` — assign the closest suitable driver to a request
-- `paga_aos_motoristas` — batch driver payouts by thresholds
-- `cancela_motoristas` — deactivate persistently low-rated drivers
-- plus: single-driver payment registration, request cancellation
-
-**Triggers**
-- `update_status` — block going offline mid-trip / release pending requests
-- `cliente_Avalia` — validate ratings and keep client counters
-- `viagem_Terminada` — free the driver and update shift totals on trip end
-- `update_pedido` — audit every trip-request status change
-- plus: real-time driver rating update, request status-transition guard,
-  and temporal triggers for date integrity (no future birth/registration dates)
-
-**Integrity & tuning**
-- CHECK constraints for non-negative money/distance/duration, valid date
-  ordering, and payment consistency (`net = gross − commission`)
-- Storage parameters (PCTFREE/INITRANS) for the five fastest-growing tables
-
----
-
-## Data model
 
 Open `model/tvdept.dbml` at [dbdiagram.io](https://dbdiagram.io) for the physical
-model, and `model/er-diagram.drawio` at [draw.io](https://app.diagrams.net) for
-the ER diagram.
+model and `model/er-diagram.drawio` at [draw.io](https://app.diagrams.net) for the
+ER diagram.
+
+> Passwords and the JWT secret in this repository are local demo values — change
+> them before any real deployment.
 
 ---
 

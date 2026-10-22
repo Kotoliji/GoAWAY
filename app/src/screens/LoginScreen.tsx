@@ -53,11 +53,16 @@ export default function LoginScreen({ navigation }: ScreenProps<'Login'>) {
       <TouchableOpacity onPress={() => navigation.navigate('Register')}>
         <Text style={styles.link}>No account? Create one</Text>
       </TouchableOpacity>
+
+      <Text style={styles.demo}>
+        Demo: rider jose.lopes@email.com · driver joao.marques@email.com · password demo123
+      </Text>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
+  demo: { color: '#999', textAlign: 'center', marginTop: 24, fontSize: 12, lineHeight: 18 },
   container: { flex: 1, padding: 24, justifyContent: 'center', backgroundColor: '#fff' },
   brand: { fontSize: 36, fontWeight: '800', color: '#0B5FFF', textAlign: 'center' },
   subtitle: { fontSize: 16, color: '#666', textAlign: 'center', marginBottom: 24 },

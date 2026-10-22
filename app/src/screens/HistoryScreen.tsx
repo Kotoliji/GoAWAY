@@ -47,9 +47,9 @@ export default function HistoryScreen({ navigation }: ScreenProps<'History'>) {
           <Text style={styles.summary}>
             {rows.length} {isClient ? 'rides' : 'trips'} · {money(total)} {isClient ? 'spent' : 'earned'}
           </Text>
-        ) : null
+        ) : undefined
       }
-      ListEmptyComponent={rows ? <Text style={styles.empty}>No trips yet.</Text> : null}
+      ListEmptyComponent={rows ? <Text style={styles.empty}>No trips yet.</Text> : undefined}
       renderItem={({ item: r }) => (
         <TouchableOpacity
           style={styles.row}

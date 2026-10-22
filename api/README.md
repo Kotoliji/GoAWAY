@@ -7,6 +7,8 @@ it over HTTP/JSON.
 
 ## Run locally
 
+Node.js 22+ (the Docker image uses Node 24).
+
 1. Make sure the database is up and reachable, and the schema is built
    (`../database/install.sql`).
 2. Configure the connection:
@@ -119,6 +121,18 @@ Every socket also joins a personal inbox room (`inbox:client:<id>` / `inbox:driv
 which is how `ride:updated` reaches the right people. Admin sockets join `admins` and
 also receive every `driver:moved`.
 
+## Tests
+
+End-to-end suites in `test/e2e/` (Node's built-in test runner, no extra
+dependencies) drive the running stack over HTTP and Socket.IO — 65 checks over
+the driver, rider, dispatch and admin flows. Each suite works in its own city,
+so they don't interfere with each other or with the simulator.
+
+```bash
+docker compose up -d --build --wait     # from the repo root
+npm run test:e2e
+```
+
 ## Demo traffic simulator
 
 ```bash
@@ -130,7 +144,7 @@ Seeded drivers go online around Coimbra and stream GPS; simulated clients reques
 rides; drivers accept (sometimes decline), drive to the pickup and the destination,
 and finish; clients rate. It only uses the public API and sockets, so every PL/SQL
 rule, push and the admin live map run for real. On stop it cancels open requests
-and takes the drivers offline.
+and puts every driver back as it was (status and position).
 
 Connect with the access token in the handshake:
 `io(API_URL, { auth: { token } })`.

@@ -1,0 +1,64 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build:
+    name: Typecheck & build (API, admin, mobile)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: API — install & build
+        working-directory: api
+        run: npm ci && npm run build
+
+      - name: Admin — install & build
+        working-directory: admin
+        run: npm ci && npm run build
+
+      - name: Mobile — install, typecheck, expo-doctor
+        working-directory: app
+        run: |
+          npm ci
+          npm run typecheck
+          npx expo-doctor
+
+  e2e:
+    name: Oracle + API end-to-end
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Start Oracle XE + API (schema built on first start)
+        run: docker compose up -d --build --wait db api
+
+      - name: Wait for the API
+        run: |
+          for i in $(seq 1 60); do curl -sf http://localhost:3000/health && exit 0; sleep 2; done
+          docker compose logs api; exit 1
+
+      - name: Schema has no invalid objects
+        run: |
+          n=$(docker compose exec -T db bash -c "printf 'set heading off feedback off\nselect count(*) from user_objects where status = '\''INVALID'\'';\nexit\n' | sqlplus -s tvdept/tvdept@//localhost/XEPDB1" | tr -d '[:space:]')
+          echo "invalid objects: $n"; test "$n" = "0"
+
+      - name: PL/SQL smoke tests
+        run: docker compose exec -T -w /opt/tvdept db bash -c "echo exit | sqlplus -s tvdept/tvdept@//localhost/XEPDB1 @tests/smoke_tests.sql"
+
+      - name: End-to-end tests (HTTP + Socket.IO)
+        working-directory: api
+        run: npm ci && npm run test:e2e
+
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --tail=200

@@ -23,6 +23,10 @@ Built and tested on **Oracle Database 21c XE**.
 
 ```
 tvdept/
+├── docker-compose.yml           # Oracle XE + API, one command
+├── docker/db-init/              # builds the schema on the DB's first start
+├── api/                         # Node + TypeScript + Express backend
+├── app/                         # Expo (React Native) mobile app
 ├── database/
 │   ├── 00_setup_user.sql        # create the application schema/user (run as DBA)
 │   ├── 01_schema/tables.sql     # 14 tables + PK/FK/CHECK constraints
@@ -47,7 +51,28 @@ tvdept/
 
 ---
 
-## Quick start
+## Quick start (Docker — recommended)
+
+Requires only Docker. Starts Oracle XE, builds the whole schema on first run,
+then starts the API on http://localhost:3000.
+
+```bash
+docker compose up -d --build
+docker compose ps                 # wait until db is "healthy" (~1-3 min first time)
+curl http://localhost:3000/health
+```
+
+Run the smoke tests (all changes rolled back):
+```bash
+docker compose exec -w /opt/tvdept db bash -c "echo exit | sqlplus -s tvdept/tvdept@//localhost/XEPDB1 @tests/smoke_tests.sql"
+```
+
+Reset the database to a clean state: `docker compose down -v`.
+
+For API development with hot reload, start only the database
+(`docker compose up -d db`) and run the API locally (see `api/README.md`).
+
+## Quick start (manual Oracle install)
 
 1. **Create the application user** (connected as a DBA):
    ```bash

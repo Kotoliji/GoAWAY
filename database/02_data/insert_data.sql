@@ -10,19 +10,7 @@
 insert into client values ( 1,
                             'Jose Lopes',
                             'jose.lopes@email.com',
-                            {
-                               {
-                                  9,
-                                 1,
-                                 3,
-                                 4,
-                                 5,
-                                 6,
-                                 7,
-                                 8,
-                                 9
-                               }
-                            },
+                            '912345678',
                             to_date('1990-05-15','YYYY-MM-DD'),
                             'M',
                             'Rua da Sofia 15, Coimbra',

@@ -1,0 +1,42 @@
+# One-command local stack: Oracle XE (schema auto-built on first start) + API.
+#   docker compose up -d --build
+# First start builds the database (~1-3 min); later starts reuse the volume.
+# Reset everything: docker compose down -v
+
+services:
+  db:
+    image: gvenzl/oracle-xe:21-slim-faststart
+    environment:
+      ORACLE_PASSWORD: oracle          # SYS/SYSTEM password (local only)
+      APP_USER: tvdept                 # created in XEPDB1 with CREATE VIEW etc.
+      APP_USER_PASSWORD: tvdept
+    ports:
+      - "1521:1521"
+    volumes:
+      - oradata:/opt/oracle/oradata
+      - ./database:/opt/tvdept:ro
+      - ./docker/db-init:/container-entrypoint-initdb.d:ro
+    healthcheck:
+      # Healthy only once install.sql has finished (last object it creates).
+      test: ["CMD-SHELL", "echo \"select 'RE'||'ADY' from user_sequences where sequence_name = 'SEQ_CLIENT_RATING';\" | sqlplus -s -L tvdept/tvdept@//localhost/XEPDB1 | grep -q READY"]
+      interval: 10s
+      timeout: 10s
+      retries: 60
+      start_period: 30s
+
+  api:
+    build: ./api
+    environment:
+      PORT: 3000
+      DB_USER: tvdept
+      DB_PASSWORD: tvdept
+      DB_CONNECT_STRING: db:1521/XEPDB1
+      JWT_SECRET: dev-secret-change-me
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  oradata:

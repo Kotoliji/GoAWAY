@@ -1,6 +1,6 @@
 import { apiRequest } from './client';
 import { API_BASE_URL } from '../config';
-import { AuthResponse, Ride, User } from './types';
+import { AuthResponse, Ride, SignupInput, User } from './types';
 
 // --- auth ---
 export function loginApi(email: string, password: string) {
@@ -10,13 +10,7 @@ export function loginApi(email: string, password: string) {
   });
 }
 
-export function registerApi(input: {
-  email: string;
-  password: string;
-  role: 'CLIENT' | 'DRIVER';
-  clientId?: number;
-  driverId?: number;
-}) {
+export function registerApi(input: SignupInput) {
   return apiRequest<AuthResponse>('/auth/register', {
     method: 'POST',
     body: JSON.stringify(input),

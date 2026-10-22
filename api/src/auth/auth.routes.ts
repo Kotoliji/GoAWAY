@@ -8,13 +8,37 @@ import { parse } from '../common/validate';
 
 export const authRouter = Router();
 
-const registerSchema = z.object({
-  email: z.string().email(),
+// Public sign-up creates the CLIENT / DRIVER row together with the login.
+// ADMIN accounts are not self-service (seeded by database/05_app/04_demo_users.sql).
+const personFields = {
+  email: z.string().trim().toLowerCase().email(),
   password: z.string().min(6),
-  role: z.enum(['CLIENT', 'DRIVER', 'ADMIN']),
-  clientId: z.coerce.number().int().positive().optional(),
-  driverId: z.coerce.number().int().positive().optional(),
-});
+  name: z.string().trim().min(2).max(100),
+  phone: z.string().trim().max(20).optional(),
+  birthDate: z.coerce.date().optional(),
+};
+
+const registerSchema = z.discriminatedUnion('role', [
+  z.object({
+    role: z.literal('CLIENT'),
+    ...personFields,
+    gender: z.enum(['M', 'F', 'OTHER']).optional(),
+    paymentMethod: z.enum(['MULTIBANCO', 'MBWAY']).optional(),
+  }),
+  z.object({
+    role: z.literal('DRIVER'),
+    ...personFields,
+    licenseNumber: z.string().trim().min(3).max(30),
+    vehicle: z.object({
+      plate: z.string().trim().min(4).max(20),
+      brand: z.string().trim().max(50).optional(),
+      model: z.string().trim().max(50).optional(),
+      year: z.coerce.number().int().min(1990).max(new Date().getFullYear() + 1).optional(),
+      fuelType: z.enum(['Electric', 'Gasoline', 'Diesel', 'Hybrid']),
+      vehicleType: z.enum(['AI', 'NOAI']),
+    }),
+  }),
+]);
 
 const loginSchema = z.object({
   email: z.string().email(),
@@ -43,20 +67,24 @@ authRouter.post('/register', async (req, res, next) => {
     const passwordHash = await bcrypt.hash(b.password, 10);
 
     let userId: number;
+    let clientId: number | null = null;
+    let driverId: number | null = null;
     try {
-      userId = await svc.createUser({
-        email: b.email,
-        passwordHash,
-        role: b.role,
-        clientId: b.clientId ?? null,
-        driverId: b.driverId ?? null,
-      });
+      if (b.role === 'CLIENT') {
+        ({ userId, clientId } = await svc.registerClient(b.email, passwordHash, b));
+      } else {
+        ({ userId, driverId } = await svc.registerDriver(b.email, passwordHash, b));
+      }
     } catch (e: any) {
-      if (e?.errorNum === 1) throw new HttpError(409, 'Email already registered'); // ORA-00001
-      throw e; // CK_APP_USER_LINK (ORA-02290) is mapped to 400 by the global handler
+      if (e?.errorNum === 1) {
+        // ORA-00001: the message names the violated unique constraint
+        const plate = String(e.message).toUpperCase().includes('UQ_VEHICLE_PLATE');
+        throw new HttpError(409, plate ? 'Plate already registered' : 'Email already registered');
+      }
+      throw e;
     }
 
-    const tokens = await issueTokens(userId, b.role, b.email, b.clientId ?? null, b.driverId ?? null);
+    const tokens = await issueTokens(userId, b.role, b.email, clientId, driverId);
     res.status(201).json({ user: { id: userId, email: b.email, role: b.role }, ...tokens });
   } catch (err) {
     next(err);

@@ -40,9 +40,11 @@ PROMPT --- 4. PL/SQL layer ---
 @@04_plsql/05_integrity.sql
 @@04_plsql/06_physical_params.sql
 
-PROMPT --- 5. Application layer (auth, devices, runtime sequences) ---
+PROMPT --- 5. Application layer (auth, sign-up, demo accounts) ---
 @@05_app/01_auth_tables.sql
 @@05_app/02_app_sequences.sql
+@@05_app/03_app_register.sql
+@@05_app/04_demo_users.sql
 
 PROMPT ====================================================
 PROMPT  Verification: invalid objects (should be none)

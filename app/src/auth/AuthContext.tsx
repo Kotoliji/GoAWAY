@@ -1,19 +1,13 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { loadTokens, setTokens, clearTokens, hasSession, getRefresh } from './tokens';
 import { loginApi, registerApi, meApi, logoutApi } from '../api/endpoints';
-import { User } from '../api/types';
+import { SignupInput, User } from '../api/types';
 
 interface AuthContextValue {
   user: User | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<void>;
-  signUp: (input: {
-    email: string;
-    password: string;
-    role: 'CLIENT' | 'DRIVER';
-    clientId?: number;
-    driverId?: number;
-  }) => Promise<void>;
+  signUp: (input: SignupInput) => Promise<void>;
   signOut: () => Promise<void>;
 }
 
@@ -45,13 +39,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(user);
   }
 
-  async function signUp(input: {
-    email: string;
-    password: string;
-    role: 'CLIENT' | 'DRIVER';
-    clientId?: number;
-    driverId?: number;
-  }) {
+  async function signUp(input: SignupInput) {
     const res = await registerApi(input);
     await setTokens(res.accessToken, res.refreshToken);
     const { user } = await meApi();

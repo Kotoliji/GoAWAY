@@ -26,11 +26,12 @@ it over HTTP/JSON.
 | Method | Path | Auth | Description |
 |---|---|---|---|
 | GET | `/health` | — | Liveness + DB round-trip |
-| POST | `/auth/register` | — | Create an account (`CLIENT`+`clientId` / `DRIVER`+`driverId` / `ADMIN`) → tokens |
+| POST | `/auth/register` | — | Sign up as `CLIENT` or `DRIVER` (+ vehicle) — creates the business row and the login in one transaction (`app_register_client` / `app_register_driver`) → tokens |
 | POST | `/auth/login` | — | Email + password → access + refresh tokens |
 | POST | `/auth/refresh` | — | Rotate refresh token → new tokens |
 | POST | `/auth/logout` | — | Revoke a refresh token |
 | GET | `/me` | Bearer | Current user's claims |
+| GET | `/me/profile` | Bearer | The client, or driver + vehicle, behind the login |
 | POST | `/rides` | CLIENT | Request a ride → creates a `trip_request` and runs `aloca_motorista` to assign the nearest driver |
 | GET | `/rides/:id` | owner/driver/admin | Ride status + assigned driver |
 | GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) |
@@ -40,6 +41,18 @@ it over HTTP/JSON.
 | POST | `/rides/:id/rate` | CLIENT | Rate a completed trip (`cliente_Avalia` + `TRG_DRIVER_RATING_UPDATE`) |
 | POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED` + fee) |
 | GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
+
+Sign-up bodies:
+
+```jsonc
+// CLIENT
+{ "role": "CLIENT", "email": "ana@mail.pt", "password": "secret1", "name": "Ana", "phone": "912000000", "paymentMethod": "MBWAY" }
+// DRIVER
+{ "role": "DRIVER", "email": "rui@mail.pt", "password": "secret1", "name": "Rui", "licenseNumber": "C-123456",
+  "vehicle": { "plate": "AA-11-BB", "brand": "Tesla", "model": "Model 3", "year": 2022, "fuelType": "Electric", "vehicleType": "AI" } }
+```
+
+**Demo logins** (seeded by `database/05_app/04_demo_users.sql`, password `demo123`): every seeded client and driver by their seed email (e.g. client `jose.lopes@email.com`, driver `joao.marques@email.com`) and the admin `admin@tvdept.pt`. Admin accounts cannot be self-registered.
 
 Auth uses JWT access tokens (short-lived) + opaque, rotating refresh tokens
 (only their SHA-256 hash is stored). Passwords are bcrypt-hashed. Send the

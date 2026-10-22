@@ -11,31 +11,122 @@ export interface AppUser {
   DRIVER_ID: number | null;
 }
 
-/** Insert a new app_user; returns the generated user_id. */
-export async function createUser(params: {
-  email: string;
-  passwordHash: string;
-  role: Role;
-  clientId?: number | null;
-  driverId?: number | null;
-}): Promise<number> {
+export interface ClientSignup {
+  name: string;
+  phone?: string;
+  birthDate?: Date;
+  gender?: 'M' | 'F' | 'OTHER';
+  paymentMethod?: 'MULTIBANCO' | 'MBWAY';
+}
+
+export interface DriverSignup {
+  name: string;
+  phone?: string;
+  birthDate?: Date;
+  licenseNumber: string;
+  vehicle: {
+    plate: string;
+    brand?: string;
+    model?: string;
+    year?: number;
+    fuelType: string;
+    vehicleType: 'AI' | 'NOAI';
+  };
+}
+
+const OUT_NUMBER = { type: oracledb.NUMBER, dir: oracledb.BIND_OUT };
+
+/** Create CLIENT row + login in one transaction (PL/SQL app_register_client). */
+export async function registerClient(
+  email: string,
+  passwordHash: string,
+  p: ClientSignup,
+): Promise<{ userId: number; clientId: number }> {
   return withConn(async (c) => {
     const r = await c.execute(
-      `INSERT INTO app_user (user_id, email, password_hash, role, client_id, driver_id)
-       VALUES (seq_app_user.NEXTVAL, :email, :hash, :role, :clientId, :driverId)
-       RETURNING user_id INTO :id`,
+      `BEGIN app_register_client(:email, :hash, :name, :phone, :birth, :gender, :payment,
+                                 :userId, :clientId); END;`,
       {
-        email: params.email,
-        hash: params.passwordHash,
-        role: params.role,
-        clientId: params.clientId ?? null,
-        driverId: params.driverId ?? null,
-        id: { type: oracledb.NUMBER, dir: oracledb.BIND_OUT },
+        email,
+        hash: passwordHash,
+        name: p.name,
+        phone: p.phone ?? null,
+        birth: p.birthDate ?? null,
+        gender: p.gender ?? null,
+        payment: p.paymentMethod ?? null,
+        userId: OUT_NUMBER,
+        clientId: OUT_NUMBER,
       },
       { autoCommit: true },
     );
-    const outBinds = r.outBinds as { id: number[] };
-    return outBinds.id[0];
+    const o = r.outBinds as { userId: number; clientId: number };
+    return { userId: o.userId, clientId: o.clientId };
+  });
+}
+
+/** Create DRIVER + VEHICLE + login in one transaction (PL/SQL app_register_driver). */
+export async function registerDriver(
+  email: string,
+  passwordHash: string,
+  p: DriverSignup,
+): Promise<{ userId: number; driverId: number }> {
+  return withConn(async (c) => {
+    const r = await c.execute(
+      `BEGIN app_register_driver(:email, :hash, :name, :phone, :birth, :license,
+                                 :plate, :brand, :model, :year, :fuel, :vtype,
+                                 :userId, :driverId); END;`,
+      {
+        email,
+        hash: passwordHash,
+        name: p.name,
+        phone: p.phone ?? null,
+        birth: p.birthDate ?? null,
+        license: p.licenseNumber,
+        plate: p.vehicle.plate,
+        brand: p.vehicle.brand ?? null,
+        model: p.vehicle.model ?? null,
+        year: p.vehicle.year ?? null,
+        fuel: p.vehicle.fuelType,
+        vtype: p.vehicle.vehicleType,
+        userId: OUT_NUMBER,
+        driverId: OUT_NUMBER,
+      },
+      { autoCommit: true },
+    );
+    const o = r.outBinds as { userId: number; driverId: number };
+    return { userId: o.userId, driverId: o.driverId };
+  });
+}
+
+/** Profile row behind a login: the CLIENT, or the DRIVER with its vehicle. */
+export async function getProfile(
+  clientId: number | null | undefined,
+  driverId: number | null | undefined,
+): Promise<Record<string, unknown> | null> {
+  return withConn(async (c) => {
+    if (clientId) {
+      const r = await c.execute(
+        `SELECT client_id, name, email, phone, birth_date, gender, payment_method,
+                num_evaluations, avg_score
+           FROM client WHERE client_id = :id`,
+        { id: clientId },
+      );
+      return (r.rows?.[0] as Record<string, unknown>) ?? null;
+    }
+    if (driverId) {
+      const r = await c.execute(
+        `SELECT d.driver_id, d.name, d.email, d.phone, d.birth_date, d.license_number,
+                d.status, d.avg_score, d.num_ratings,
+                v.plate, v.brand, v.model, v.year, v.fuel_type, v.vehicle_type
+           FROM driver d
+           LEFT JOIN driver_vehicle dv ON dv.driver_id = d.driver_id
+           LEFT JOIN vehicle v ON v.vehicle_id = dv.vehicle_id
+          WHERE d.driver_id = :id AND ROWNUM = 1`,
+        { id: driverId },
+      );
+      return (r.rows?.[0] as Record<string, unknown>) ?? null;
+    }
+    return null;
   });
 }
 

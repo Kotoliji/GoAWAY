@@ -17,8 +17,8 @@ services:
       - ./database:/opt/tvdept:ro
       - ./docker/db-init:/container-entrypoint-initdb.d:ro
     healthcheck:
-      # Healthy only once install.sql has finished (last object it creates).
-      test: ["CMD-SHELL", "echo \"select 'RE'||'ADY' from user_sequences where sequence_name = 'SEQ_CLIENT_RATING';\" | sqlplus -s -L tvdept/tvdept@//localhost/XEPDB1 | grep -q READY"]
+      # Healthy only once install.sql has finished (marker written by db-init).
+      test: ["CMD-SHELL", "test -f /opt/oracle/oradata/.tvdept_installed && healthcheck.sh"]
       interval: 10s
       timeout: 10s
       retries: 60

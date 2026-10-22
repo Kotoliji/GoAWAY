@@ -8,6 +8,35 @@ export interface User {
   driverId?: number | null;
 }
 
+interface SignupBase {
+  email: string;
+  password: string;
+  name: string;
+  phone?: string;
+}
+
+export interface ClientSignupInput extends SignupBase {
+  role: 'CLIENT';
+  paymentMethod?: 'MULTIBANCO' | 'MBWAY';
+}
+
+export type FuelType = 'Electric' | 'Gasoline' | 'Diesel' | 'Hybrid';
+
+export interface DriverSignupInput extends SignupBase {
+  role: 'DRIVER';
+  licenseNumber: string;
+  vehicle: {
+    plate: string;
+    brand?: string;
+    model?: string;
+    year?: number;
+    fuelType: FuelType;
+    vehicleType: 'AI' | 'NOAI';
+  };
+}
+
+export type SignupInput = ClientSignupInput | DriverSignupInput;
+
 export interface AuthResponse {
   user: { id: number; email: string; role: Role };
   accessToken: string;

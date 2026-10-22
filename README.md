@@ -25,8 +25,9 @@ Built and tested on **Oracle Database 21c XE**.
 tvdept/
 ├── docker-compose.yml           # Oracle XE + API, one command
 ├── docker/db-init/              # builds the schema on the DB's first start
-├── api/                         # Node + TypeScript + Express backend
-├── app/                         # Expo (React Native) mobile app
+├── api/                         # Node + TypeScript + Express backend (+ demo simulator)
+├── app/                         # Expo (React Native) mobile app: rider + driver
+├── admin/                       # React + Vite admin panel (browser)
 ├── database/
 │   ├── 00_setup_user.sql        # create the application schema/user (run as DBA)
 │   ├── 01_schema/tables.sql     # 14 tables + PK/FK/CHECK constraints
@@ -54,7 +55,8 @@ tvdept/
 ## Quick start (Docker — recommended)
 
 Requires only Docker. Starts Oracle XE, builds the whole schema on first run,
-then starts the API on http://localhost:3000.
+then starts the API on http://localhost:3000 and the admin panel on
+http://localhost:8080 (sign in as `admin@tvdept.pt` / `demo123`).
 
 ```bash
 docker compose up -d --build
@@ -71,6 +73,9 @@ Reset the database to a clean state: `docker compose down -v`.
 
 For API development with hot reload, start only the database
 (`docker compose up -d db`) and run the API locally (see `api/README.md`).
+
+To see live activity on the admin dashboard and map, run the demo traffic
+simulator: `cd api && npm install && npm run simulate`.
 
 ## Quick start (manual Oracle install)
 

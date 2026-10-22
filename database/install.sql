@@ -47,6 +47,7 @@ PROMPT --- 5. Application layer (auth, sign-up, demo accounts) ---
 @@05_app/04_app_driver.sql
 @@05_app/05_demo_users.sql
 @@05_app/06_app_rider.sql
+@@05_app/07_app_admin.sql
 
 PROMPT ====================================================
 PROMPT  Verification: invalid objects (should be none)

@@ -5,7 +5,7 @@ import { requireAuth, requireRole } from '../../auth/auth.middleware';
 import { HttpError } from '../../common/errors';
 import { parse } from '../../common/validate';
 import { notifyRide } from '../../realtime/notify';
-import { tryAllocate } from './dispatch';
+import { dispatchPending, tryAllocate } from './dispatch';
 
 export const ridesRouter = Router();
 
@@ -153,6 +153,7 @@ ridesRouter.post('/:id/cancel', requireAuth, requireRole('CLIENT'), async (req, 
     await svc.cancel(id);
     const updated = await svc.getRide(id);
     notifyRide(updated, ride.DRIVER_ID != null ? [ride.DRIVER_ID] : []);
+    if (ride.DRIVER_ID != null) await dispatchPending(); // that driver is free again
     res.json({ ride: updated });
   } catch (err) {
     next(err);
@@ -227,6 +228,7 @@ ridesRouter.post('/:id/complete', requireAuth, requireRole('DRIVER'), async (req
     if (!ok) throw new HttpError(409, 'Trip must be in progress to complete');
     const updated = await svc.getRide(id);
     notifyRide(updated);
+    await dispatchPending(); // the driver is free again: offer waiting requests
     res.json({ ride: updated, estimate: await svc.estimate(id) });
   } catch (err) {
     next(err);

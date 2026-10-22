@@ -1,5 +1,7 @@
-# One-command local stack: Oracle XE (schema auto-built on first start) + API.
+# One-command local stack: Oracle XE (schema auto-built on first start), API
+# and the admin panel.
 #   docker compose up -d --build
+#   API http://localhost:3000 · admin http://localhost:8080 (admin@tvdept.pt / demo123)
 # First start builds the database (~1-3 min); later starts reuse the volume.
 # Reset everything: docker compose down -v
 
@@ -37,6 +39,16 @@ services:
     depends_on:
       db:
         condition: service_healthy
+
+  admin:
+    build:
+      context: ./admin
+      args:
+        VITE_API_URL: http://localhost:3000
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
 
 volumes:
   oradata:

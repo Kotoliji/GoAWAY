@@ -2,7 +2,7 @@ import { Server, Socket } from 'socket.io';
 import { verifyAccess, AccessPayload } from '../auth/jwt';
 import { getRide } from '../modules/rides/rides.service';
 import { updateDriverLocation } from './location.service';
-import { clientInbox, driverInbox, setNotifier } from './notify';
+import { ADMINS, clientInbox, driverInbox, setNotifier } from './notify';
 
 const driverRoom = (driverId: number) => `driver:${driverId}`;
 
@@ -29,6 +29,7 @@ export function setupSocket(io: Server): void {
     // Personal inbox for ride:updated pushes (see notify.ts).
     if (user.clientId != null) socket.join(clientInbox(user.clientId));
     if (user.driverId != null) socket.join(driverInbox(user.driverId));
+    if (user.role === 'ADMIN') socket.join(ADMINS);
 
     // A driver streams its GPS position.
     socket.on('driver:location', async (p: { lat: number; long: number }) => {
@@ -39,7 +40,7 @@ export function setupSocket(io: Server): void {
       } catch {
         /* ignore transient DB errors on the hot path */
       }
-      io.to(driverRoom(user.driverId)).emit('driver:moved', {
+      io.to([driverRoom(user.driverId), ADMINS]).emit('driver:moved', {
         driverId: user.driverId,
         lat: p.lat,
         long: p.long,

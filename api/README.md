@@ -50,6 +50,20 @@ it over HTTP/JSON.
 | POST | `/driver/offline` | DRIVER | `OFFLINE` (refused mid-trip by `update_status`); held requests go to other drivers |
 | GET | `/api/geo/distance?lat1&long1&lat2&long2` | — | Haversine distance via the DB function `distancia_linear` |
 
+### Admin (`ADMIN` role)
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/admin/overview` | KPIs, completed trips/revenue per month (24 months), requests by status, top drivers |
+| GET | `/admin/live` | Live requests + online drivers with positions (live map) |
+| GET | `/admin/rides?status=` | Latest 200 requests |
+| GET | `/admin/drivers` | All drivers with vehicle, lifetime trips/revenue and unpaid balance |
+| POST | `/admin/drivers/:id/status` | `{ status: DISABLED \| OFFLINE }` — disable / re-enable (`app_admin_set_driver_status`; held rides re-dispatched) |
+| POST | `/admin/drivers/deactivate-low-rated` | `{ vehicleType, from, to }` → `cancela_motoristas`, returns who was disabled |
+| GET | `/admin/payments` | Latest 200 payouts |
+| POST | `/admin/payments/run` | `{ minAmount, minDays }` → `paga_aos_motoristas`, returns the payments created |
+| GET | `/admin/reports`, `/admin/reports/:key` | The analytical views (`view_a` … `view_k2_`) as `{ columns, rows }` |
+
 Sign-up bodies:
 
 ```jsonc
@@ -99,10 +113,24 @@ The server also runs a JWT-authenticated WebSocket layer (`src/realtime/`):
 | client → server | `ride:watch` | `{ rideId }` | Rider subscribes to its assigned driver |
 | server → client | `driver:moved` | `{ driverId, lat, long }` | Live driver position pushed to watchers |
 | client → server | `ride:unwatch` | `{ driverId }` | Stop receiving updates |
-| server → client | `ride:updated` | `{ ride }` | Pushed to the ride's client and driver on every change (assigned, accepted, picked up, completed, cancelled, re-assigned) |
+| server → client | `ride:updated` | `{ ride }` | Pushed to the ride's client and driver (and admins) on every change (assigned, accepted, picked up, completed, cancelled, re-assigned) |
 
 Every socket also joins a personal inbox room (`inbox:client:<id>` / `inbox:driver:<id>`),
-which is how `ride:updated` reaches the right people.
+which is how `ride:updated` reaches the right people. Admin sockets join `admins` and
+also receive every `driver:moved`.
+
+## Demo traffic simulator
+
+```bash
+npm run simulate                                   # until Ctrl+C
+SIM_DRIVERS=8 SIM_CLIENTS=6 SIM_SECONDS=300 npm run simulate
+```
+
+Seeded drivers go online around Coimbra and stream GPS; simulated clients request
+rides; drivers accept (sometimes decline), drive to the pickup and the destination,
+and finish; clients rate. It only uses the public API and sockets, so every PL/SQL
+rule, push and the admin live map run for real. On stop it cancels open requests
+and takes the drivers offline.
 
 Connect with the access token in the handshake:
 `io(API_URL, { auth: { token } })`.

@@ -21,6 +21,9 @@ export interface RideRow {
   CLIENT_LONG: number | null;
   VEHICLE_PLATE: string | null;
   VEHICLE_DESC: string | null;
+  FARE: number | null; // final fare once completed
+  TRIP_KM: number | null;
+  RATING: number | null; // the client's score for this trip
 }
 
 export interface NewRide {
@@ -107,11 +110,16 @@ export async function getRide(requestId: number): Promise<RideRow | null> {
               c.latitude  AS client_lat,
               c.longitude AS client_long,
               v.plate     AS vehicle_plate,
-              TRIM(v.brand || ' ' || v.model) AS vehicle_desc
+              TRIM(v.brand || ' ' || v.model) AS vehicle_desc,
+              t.value       AS fare,
+              t.distance_km AS trip_km,
+              (SELECT MAX(cr.score) FROM client_rating cr
+                WHERE cr.trip_id = tr.request_id AND cr.client_id = tr.client_id) AS rating
          FROM trip_request tr
          JOIN client c ON c.client_id = tr.client_id
          LEFT JOIN driver d ON d.driver_id = tr.driver_id
          LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
+         LEFT JOIN trip t ON t.request_id = tr.request_id
         WHERE tr.request_id = :id`,
       { id: requestId },
     );
@@ -146,6 +154,7 @@ export async function accept(requestId: number, driverId: number): Promise<boole
 export interface Estimate {
   km: number | null;
   fare: number | null;
+  cancelFee: number; // FN_CANCEL_FEE: 0 until a driver is assigned
 }
 
 /** Estimated distance (FN_REQUEST_DISTANCE) and a simple fare from the tariff. */
@@ -155,8 +164,9 @@ export async function estimate(requestId: number): Promise<Estimate | null> {
       KM: number | null;
       BASE_FEE: number | null;
       PRICE_PER_KM: number | null;
+      CANCEL_FEE: number;
     }>(
-      `SELECT FN_REQUEST_DISTANCE(:id) AS km, ${TARIFF_COLS}
+      `SELECT FN_REQUEST_DISTANCE(:id) AS km, FN_CANCEL_FEE(:id) AS cancel_fee, ${TARIFF_COLS}
          FROM trip_request tr
          LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
         WHERE tr.request_id = :id`,
@@ -166,7 +176,7 @@ export async function estimate(requestId: number): Promise<Estimate | null> {
     if (!row) return null;
     const km = row.KM != null ? Math.round(row.KM * 100) / 100 : null;
     const fare = km != null ? fareFor(km, row.BASE_FEE, row.PRICE_PER_KM) : null;
-    return { km, fare };
+    return { km, fare, cancelFee: row.CANCEL_FEE };
   });
 }
 
@@ -309,5 +319,109 @@ export async function currentRideId(driverId: number): Promise<number | null> {
       { drv: driverId },
     );
     return r.rows?.[0]?.REQUEST_ID ?? null;
+  });
+}
+
+export interface Quote {
+  km: number | null;
+  fareMin: number | null;
+  fareMax: number | null;
+  driversNearby: number;
+  nearestKm: number | null;
+}
+
+/** Price + availability before ordering (PL/SQL app_quote). */
+export async function quote(
+  originLat: number,
+  originLong: number,
+  destLat: number,
+  destLong: number,
+  vehicleType: 'AI' | 'NOAI',
+): Promise<Quote> {
+  return withConn(async (c) => {
+    const out = { type: oracledb.NUMBER, dir: oracledb.BIND_OUT };
+    const r = await c.execute(
+      `BEGIN app_quote(:olat, :olng, :dlat, :dlng, :vtype, :km, :fmin, :fmax, :drivers, :nearest); END;`,
+      {
+        olat: originLat, olng: originLong, dlat: destLat, dlng: destLong, vtype: vehicleType,
+        km: out, fmin: out, fmax: out, drivers: out, nearest: out,
+      },
+    );
+    const o = r.outBinds as Record<string, number | null>;
+    return {
+      km: o.km,
+      fareMin: o.fmin,
+      fareMax: o.fmax,
+      driversNearby: o.drivers ?? 0,
+      nearestKm: o.nearest,
+    };
+  });
+}
+
+/** Free drivers around a point, positions only (cars on the rider's map). */
+export async function nearbyDrivers(lat: number, long: number, radiusKm = 5) {
+  return withConn(async (c) => {
+    const r = await c.execute<{ LATITUDE: number; LONGITUDE: number }>(
+      `SELECT latitude, longitude FROM driver
+        WHERE status = 'AVAILABLE' AND latitude IS NOT NULL
+          AND distancia_linear(:lat, :lng, latitude, longitude) <= :radius
+        FETCH FIRST 20 ROWS ONLY`,
+      { lat, lng: long, radius: radiusKm },
+    );
+    return (r.rows ?? []).map((x) => ({ lat: x.LATITUDE, long: x.LONGITUDE }));
+  });
+}
+
+/** The client's live request, if any (to resume it after an app restart). */
+export async function currentClientRideId(clientId: number): Promise<number | null> {
+  return withConn(async (c) => {
+    const r = await c.execute<{ REQUEST_ID: number }>(
+      `SELECT request_id FROM trip_request
+        WHERE client_id = :cli AND status IN ('REQUESTED', 'ASSIGNED', 'ACCEPTED', 'PICKED_UP')
+        ORDER BY request_date DESC
+        FETCH FIRST 1 ROWS ONLY`,
+      { cli: clientId },
+    );
+    return r.rows?.[0]?.REQUEST_ID ?? null;
+  });
+}
+
+export interface HistoryRow {
+  REQUEST_ID: number;
+  STATUS: string;
+  REQUEST_DATE: Date;
+  ORIGIN_ADDRESS: string | null;
+  DEST_NAME: string | null;
+  FARE: number | null;
+  TRIP_KM: number | null;
+  CANCEL_FEE: number | null;
+  OTHER_NAME: string | null; // the driver for a client, the client for a driver
+  VEHICLE_PLATE: string | null;
+  RATING: number | null;
+}
+
+/** Latest 50 requests of a client, or trips driven by a driver. */
+export async function history(who: { clientId?: number | null; driverId?: number | null }): Promise<HistoryRow[]> {
+  const asClient = who.clientId != null;
+  return withConn(async (c) => {
+    const r = await c.execute<HistoryRow>(
+      `SELECT tr.request_id, tr.status, tr.request_date, tr.origin_address, tr.dest_name,
+              t.value AS fare, t.distance_km AS trip_km,
+              CASE WHEN tr.status = 'CANCELLED' THEN tr.proposed_value END AS cancel_fee,
+              ${asClient ? 'd.name' : 'c.name'} AS other_name,
+              v.plate AS vehicle_plate,
+              (SELECT MAX(cr.score) FROM client_rating cr
+                WHERE cr.trip_id = tr.request_id AND cr.client_id = tr.client_id) AS rating
+         FROM trip_request tr
+         JOIN client c ON c.client_id = tr.client_id
+         LEFT JOIN trip t ON t.request_id = tr.request_id
+         LEFT JOIN driver d ON d.driver_id = NVL(t.driver_id, tr.driver_id)
+         LEFT JOIN vehicle v ON v.vehicle_id = NVL(t.vehicle_id, tr.vehicle_id)
+        WHERE ${asClient ? 'tr.client_id = :id' : 't.driver_id = :id'}
+        ORDER BY tr.request_date DESC
+        FETCH FIRST 50 ROWS ONLY`,
+      { id: asClient ? who.clientId! : who.driverId! },
+    );
+    return r.rows ?? [];
   });
 }

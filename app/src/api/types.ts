@@ -62,11 +62,38 @@ export interface Ride {
   CLIENT_LONG: number | null;
   VEHICLE_PLATE: string | null;
   VEHICLE_DESC: string | null;
+  PROPOSED_VALUE: number | null; // cancellation fee once CANCELLED
+  FARE: number | null; // final fare once COMPLETED
+  TRIP_KM: number | null;
+  RATING: number | null; // the client's score for this trip
 }
 
 export interface Estimate {
   km: number | null;
   fare: number | null;
+  cancelFee: number;
+}
+
+export interface Quote {
+  km: number | null;
+  fareMin: number | null;
+  fareMax: number | null;
+  driversNearby: number;
+  nearestKm: number | null;
+}
+
+export interface HistoryRow {
+  REQUEST_ID: number;
+  STATUS: string;
+  REQUEST_DATE: string;
+  ORIGIN_ADDRESS: string | null;
+  DEST_NAME: string | null;
+  FARE: number | null;
+  TRIP_KM: number | null;
+  CANCEL_FEE: number | null;
+  OTHER_NAME: string | null; // the driver for a client, the client for a driver
+  VEHICLE_PLATE: string | null;
+  RATING: number | null;
 }
 
 export interface DriverInfo {

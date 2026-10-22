@@ -9,6 +9,7 @@ import RegisterScreen from '../screens/RegisterScreen';
 import RiderHomeScreen from '../screens/RiderHomeScreen';
 import DriverHomeScreen from '../screens/DriverHomeScreen';
 import RideStatusScreen from '../screens/RideStatusScreen';
+import HistoryScreen from '../screens/HistoryScreen';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -34,11 +35,13 @@ export default function RootNavigator() {
         ) : user.role === 'DRIVER' ? (
           <>
             <Stack.Screen name="DriverHome" component={DriverHomeScreen} options={{ title: 'Driver' }} />
+            <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'My trips' }} />
           </>
         ) : (
           <>
             <Stack.Screen name="RiderHome" component={RiderHomeScreen} options={{ title: 'TVDEPT' }} />
             <Stack.Screen name="RideStatus" component={RideStatusScreen} options={{ title: 'Your ride' }} />
+            <Stack.Screen name="History" component={HistoryScreen} options={{ title: 'My trips' }} />
           </>
         )}
       </Stack.Navigator>

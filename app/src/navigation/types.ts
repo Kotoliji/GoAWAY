@@ -6,6 +6,7 @@ export type RootStackParamList = {
   RiderHome: undefined;
   DriverHome: undefined;
   RideStatus: { rideId: number };
+  History: undefined;
 };
 
 export type ScreenProps<T extends keyof RootStackParamList> = NativeStackScreenProps<

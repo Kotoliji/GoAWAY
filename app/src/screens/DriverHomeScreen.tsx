@@ -12,21 +12,12 @@ import {
 import { DriverState } from '../api/types';
 import { getSocket, useSocketEvent } from '../realtime/socket';
 import { ScreenProps } from '../navigation/types';
+import Btn from '../components/Btn';
+import { currentPosition, money } from '../geo';
 
-const ISEC = { latitude: 40.1867, longitude: -8.4155 }; // fallback without GPS
 const POLL_MS = 15000; // safety net; pushes normally arrive over the socket
 
-const money = (v: number | null | undefined) => `€${Number(v ?? 0).toFixed(2)}`;
-
-/** Current position, or the fallback when permission is denied (emulators). */
-async function currentPosition() {
-  const { status } = await Location.requestForegroundPermissionsAsync();
-  if (status !== 'granted') return ISEC;
-  const pos = await Location.getCurrentPositionAsync({});
-  return { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
-}
-
-export default function DriverHomeScreen(_props: ScreenProps<'DriverHome'>) {
+export default function DriverHomeScreen({ navigation }: ScreenProps<'DriverHome'>) {
   const { signOut } = useAuth();
   const [state, setState] = useState<DriverState | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
@@ -122,7 +113,9 @@ export default function DriverHomeScreen(_props: ScreenProps<'DriverHome'>) {
         <View style={[styles.pill, online ? styles.pillOn : styles.pillOff]}>
           <Text style={styles.pillText}>{driver.STATUS === 'ON_TRIP' ? 'On trip' : online ? 'Online' : 'Offline'}</Text>
         </View>
-        <Text style={styles.today}>{money(driver.EARNED_TODAY)} · {driver.TRIPS_TODAY} trips today</Text>
+        <TouchableOpacity style={styles.flex} onPress={() => navigation.navigate('History')}>
+          <Text style={styles.today}>{money(driver.EARNED_TODAY)} · {driver.TRIPS_TODAY} trips today ›</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={signOut} disabled={driver.STATUS === 'ON_TRIP'}>
           <Text style={styles.signout}>Sign out</Text>
         </TouchableOpacity>
@@ -177,25 +170,6 @@ export default function DriverHomeScreen(_props: ScreenProps<'DriverHome'>) {
   );
 }
 
-function Btn({ label, onPress, busy, variant = 'solid', flex }: {
-  label: string;
-  onPress: () => void;
-  busy: boolean;
-  variant?: 'solid' | 'outline';
-  flex?: boolean;
-}) {
-  const outline = variant === 'outline';
-  return (
-    <TouchableOpacity
-      style={[styles.button, outline && styles.buttonOutline, flex && styles.flex, busy && styles.disabled]}
-      onPress={onPress}
-      disabled={busy}
-    >
-      <Text style={[styles.buttonText, outline && styles.buttonTextOutline]}>{label}</Text>
-    </TouchableOpacity>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center' },
@@ -208,7 +182,7 @@ const styles = StyleSheet.create({
   pillOn: { backgroundColor: '#18A957' },
   pillOff: { backgroundColor: '#888' },
   pillText: { color: '#fff', fontWeight: '700', fontSize: 12 },
-  today: { flex: 1, color: '#333', fontWeight: '600' },
+  today: { color: '#333', fontWeight: '600' },
   signout: { color: '#0B5FFF', fontWeight: '600' },
   card: {
     position: 'absolute', left: 16, right: 16, bottom: 24, backgroundColor: '#fff',
@@ -220,9 +194,4 @@ const styles = StyleSheet.create({
   fare: { fontSize: 28, fontWeight: '800', color: '#111', marginBottom: 12 },
   row: { flexDirection: 'row', gap: 12 },
   flex: { flex: 1 },
-  button: { backgroundColor: '#0B5FFF', borderRadius: 12, padding: 16, alignItems: 'center' },
-  buttonOutline: { backgroundColor: '#fff', borderWidth: 1, borderColor: '#0B5FFF' },
-  buttonText: { color: '#fff', fontWeight: '700', fontSize: 16 },
-  buttonTextOutline: { color: '#0B5FFF' },
-  disabled: { opacity: 0.6 },
 });

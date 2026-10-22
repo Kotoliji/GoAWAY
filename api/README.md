@@ -33,14 +33,18 @@ it over HTTP/JSON.
 | GET | `/me` | Bearer | Current user's claims |
 | GET | `/me/profile` | Bearer | The client, or driver + vehicle, behind the login |
 | POST | `/rides` | CLIENT | Request a ride from `originLat/originLong` → creates a `trip_request` and runs `aloca_motorista` to assign the nearest free driver (stays `REQUESTED` if none) |
-| GET | `/rides/:id` | owner/driver/admin | Ride status + assigned driver |
-| GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) |
+| GET | `/rides/quote?originLat&originLong&destLat&destLong&vehicleType` | Bearer | Before ordering: distance, fare range, free drivers within 5 km + nearest (`app_quote`) |
+| GET | `/rides/nearby?lat&long` | Bearer | Free drivers' positions (cars on the rider's map) |
+| GET | `/rides/current` | CLIENT | The client's live ride, if any (resume after restart) |
+| GET | `/rides/history` | CLIENT/DRIVER | Latest 50 requests (client) or trips driven (driver), with fare and rating |
+| GET | `/rides/:id` | owner/driver/admin | Ride status, driver, vehicle, final fare, rating |
+| GET | `/rides/:id/estimate` | owner/driver/admin | Distance + fare (`FN_REQUEST_DISTANCE` + tariff) + current cancellation fee (`FN_CANCEL_FEE`) |
 | POST | `/rides/:id/accept` | DRIVER | Assigned driver accepts (`ASSIGNED → ACCEPTED`) |
 | POST | `/rides/:id/reject` | DRIVER | Assigned driver declines (`app_driver_reject`: logs `REJECTED`, re-offers to the next driver) |
 | POST | `/rides/:id/pickup` | DRIVER | Pick up passenger — trip starts (creates `trip`, driver `ON_TRIP`) |
 | POST | `/rides/:id/complete` | DRIVER | End trip (fires `viagem_Terminada`: frees driver, updates shift). Distance defaults to `FN_REQUEST_DISTANCE`, fare to distance × tariff of the vehicle's fuel |
-| POST | `/rides/:id/rate` | CLIENT | Rate a completed trip (`cliente_Avalia` + `TRG_DRIVER_RATING_UPDATE`) |
-| POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED` + fee) |
+| POST | `/rides/:id/rate` | CLIENT | Rate a completed trip once (`cliente_Avalia` + `TRG_DRIVER_RATING_UPDATE`; 409 if already rated) |
+| POST | `/rides/:id/cancel` | CLIENT | Cancel (`SP_CANCEL_REQUEST`: sets `CANCELLED`; free until a driver is assigned) |
 | GET | `/driver/state` | DRIVER | Status, vehicle, today's trips/earnings, current ride + estimate |
 | POST | `/driver/online` | DRIVER | `{ lat, long }` → `AVAILABLE` (`app_driver_go_online`, refused if `DISABLED`); waiting requests are re-offered |
 | POST | `/driver/offline` | DRIVER | `OFFLINE` (refused mid-trip by `update_status`); held requests go to other drivers |

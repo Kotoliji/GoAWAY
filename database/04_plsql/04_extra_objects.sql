@@ -218,16 +218,49 @@ SHOW ERRORS
 -- Raises -20815 if the request does not exist, -20821 if it cannot be
 -- cancelled (already completed or already cancelled).
 -- ============================================================================
+-- FN_CANCEL_FEE(p_request_id): what cancelling would cost right now.
+-- Free while no driver has been assigned; afterwards the cancellation fee of
+-- the request's fuel type, else of the assigned vehicle's (fallback 2.5 EUR).
+CREATE OR REPLACE FUNCTION FN_CANCEL_FEE (
+   p_request_id NUMBER
+) RETURN NUMBER IS
+   v_status  trip_request.status%TYPE;
+   v_fuel    trip_request.fuel_type%TYPE;
+   v_fee     NUMBER;
+BEGIN
+   BEGIN
+      SELECT tr.status, NVL(tr.fuel_type, v.fuel_type)
+        INTO v_status, v_fuel
+        FROM trip_request tr
+        LEFT JOIN vehicle v ON v.vehicle_id = tr.vehicle_id
+       WHERE tr.request_id = p_request_id;
+   EXCEPTION
+      WHEN no_data_found THEN
+         raise_application_error(-20815, 'Codigo pedido de viagem inexistente: ' || p_request_id);
+   END;
+
+   IF v_status = 'REQUESTED' THEN
+      RETURN 0;
+   END IF;
+
+   SELECT nvl(MAX(cancellation_fee), 2.5)
+     INTO v_fee
+     FROM tariff
+    WHERE fuel_type = v_fuel;
+   RETURN v_fee;
+END FN_CANCEL_FEE;
+/
+SHOW ERRORS
+
 CREATE OR REPLACE PROCEDURE SP_CANCEL_REQUEST (
    p_request_id NUMBER
 ) IS
    v_status trip_request.status%TYPE;
-   v_fuel   trip_request.fuel_type%TYPE;
    v_fee    NUMBER;
 BEGIN
    BEGIN
-      SELECT status, fuel_type
-        INTO v_status, v_fuel
+      SELECT status
+        INTO v_status
         FROM trip_request
        WHERE request_id = p_request_id;
    EXCEPTION
@@ -239,11 +272,8 @@ BEGIN
       raise_application_error(-20821, 'Pedido nao pode ser cancelado (estado ' || v_status || ').');
    END IF;
 
-   -- Cancellation fee from the matching tariff (fallback 2.5 EUR)
-   SELECT nvl(MAX(cancellation_fee), 2.5)
-     INTO v_fee
-     FROM tariff
-    WHERE fuel_type = v_fuel;
+   -- Free before a driver is assigned, otherwise the tariff's fee
+   v_fee := FN_CANCEL_FEE(p_request_id);
 
    UPDATE trip_request
       SET status = 'CANCELLED',

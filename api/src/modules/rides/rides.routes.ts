@@ -66,6 +66,60 @@ ridesRouter.post('/', requireAuth, requireRole('CLIENT'), async (req, res, next)
   }
 });
 
+const pointSchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  long: z.coerce.number().min(-180).max(180),
+});
+
+const quoteSchema = z.object({
+  originLat: z.coerce.number().min(-90).max(90),
+  originLong: z.coerce.number().min(-180).max(180),
+  destLat: z.coerce.number().min(-90).max(90),
+  destLong: z.coerce.number().min(-180).max(180),
+  vehicleType: z.enum(['AI', 'NOAI']).default('NOAI'),
+});
+
+// (fixed paths first, so they are not taken for a ride id)
+
+// GET /rides/quote — distance, fare range and free drivers nearby, before ordering
+ridesRouter.get('/quote', requireAuth, async (req, res, next) => {
+  try {
+    const q = parse(quoteSchema, req.query);
+    res.json(await svc.quote(q.originLat, q.originLong, q.destLat, q.destLong, q.vehicleType));
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /rides/nearby?lat&long — free drivers' positions around a point
+ridesRouter.get('/nearby', requireAuth, async (req, res, next) => {
+  try {
+    const q = parse(pointSchema, req.query);
+    res.json({ drivers: await svc.nearbyDrivers(q.lat, q.long) });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /rides/current — the client's live ride, if any
+ridesRouter.get('/current', requireAuth, requireRole('CLIENT'), async (req, res, next) => {
+  try {
+    const id = await svc.currentClientRideId(req.user!.clientId!);
+    res.json({ ride: id != null ? await svc.getRide(id) : null });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// GET /rides/history — a client's requests, or a driver's trips (latest 50)
+ridesRouter.get('/history', requireAuth, requireRole('CLIENT', 'DRIVER'), async (req, res, next) => {
+  try {
+    res.json({ rides: await svc.history(req.user!) });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // GET /rides/:id — status + assigned driver
 ridesRouter.get('/:id', requireAuth, async (req, res, next) => {
   try {
@@ -191,7 +245,13 @@ ridesRouter.post('/:id/rate', requireAuth, requireRole('CLIENT'), async (req, re
     const b = parse(rateSchema, req.body);
     const ride = await loadAuthorized(req, id);
     if (ride.CLIENT_ID !== req.user!.clientId) throw new HttpError(403, 'Forbidden');
-    await svc.rate(id, req.user!.clientId!, b.score, b.comment ?? null);
+    try {
+      await svc.rate(id, req.user!.clientId!, b.score, b.comment ?? null);
+    } catch (e: any) {
+      if (e?.errorNum === 1) throw new HttpError(409, 'You already rated this trip'); // uq_client_rating_trip
+      throw e;
+    }
+    notifyRide(await svc.getRide(id));
     res.status(201).json({ ok: true });
   } catch (err) {
     next(err);

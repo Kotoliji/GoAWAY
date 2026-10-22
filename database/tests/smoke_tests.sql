@@ -103,6 +103,9 @@ BEGIN
      FROM trip t JOIN trip_request tr ON tr.request_id = t.request_id
     WHERE t.status = 'COMPLETED' AND ROWNUM = 1;
    SELECT num_evaluations INTO v_before FROM client WHERE client_id = v_client;
+   -- seed trips are already rated and a client rates a trip once
+   -- (uq_client_rating_trip): drop that rating first (rolled back below)
+   DELETE FROM client_rating WHERE trip_id = v_trip AND client_id = v_client;
    INSERT INTO client_rating (client_rating_id, trip_id, client_id, score) VALUES (90003, v_trip, v_client, 5);
    SELECT num_evaluations INTO v_after FROM client WHERE client_id = v_client;
    dbms_output.put_line('client ' || v_client || ' evaluations ' || v_before || ' -> ' || v_after);
@@ -182,6 +185,9 @@ BEGIN
      FROM trip t JOIN trip_request tr ON tr.request_id = t.request_id
     WHERE t.status = 'COMPLETED' AND t.driver_id IS NOT NULL AND ROWNUM = 1;
    SELECT num_ratings INTO v_b FROM driver WHERE driver_id = v_drv;
+   -- seed trips are already rated and a client rates a trip once
+   -- (uq_client_rating_trip): drop that rating first (rolled back below)
+   DELETE FROM client_rating WHERE trip_id = v_trip AND client_id = v_cli;
    INSERT INTO client_rating (client_rating_id, trip_id, client_id, score) VALUES (91001, v_trip, v_cli, 5);
    SELECT num_ratings INTO v_a FROM driver WHERE driver_id = v_drv;
    dbms_output.put_line('TRG_DRIVER_RATING_UPDATE: driver ' || v_drv || ' num_ratings ' || v_b || ' -> ' || v_a);
@@ -193,8 +199,10 @@ BEGIN
    dbms_output.put_line('FN_REQUEST_DISTANCE(req): estimated distance = ' || v || ' km');
    ROLLBACK;
    --  O_PROC: cancel request (+ update_pedido)
+   -- ASSIGNED: a driver is on it, so the Electric cancellation fee applies
+   -- (FN_CANCEL_FEE makes it free while still REQUESTED)
    INSERT INTO trip_request (request_id, client_id, request_date, status, vehicle_type, fuel_type)
-   VALUES (90012, 1, SYSDATE, 'REQUESTED', 'NOAI', 'Electric');
+   VALUES (90012, 1, SYSDATE, 'ASSIGNED', 'NOAI', 'Electric');
    SP_CANCEL_REQUEST(90012);
    SELECT status, proposed_value INTO v_st, v_fee FROM trip_request WHERE request_id = 90012;
    dbms_output.put_line('SP_CANCEL_REQUEST: status=' || v_st || ' fee=' || v_fee);

@@ -6,10 +6,14 @@ Cross-platform (iOS + Android) ride-hailing app built with **Expo + React Native
 ## What's here
 
 - **Auth**: login / register, JWT stored in `expo-secure-store`, auto-refresh on 401.
-- **Rider flow**: map home (current location via `expo-location`, `react-native-maps`),
-  tap to set a destination, **Request ride** → `POST /rides` (runs your
-  `aloca_motorista`), then a live **ride status** screen that polls until the
-  driver is assigned / on the way / completed, with cancel.
+- **Rider flow**: map home with free cars nearby; tap to set a destination
+  (reverse-geocoded), pick Standard / Smart and see the fare range, distance and
+  nearest-car ETA before ordering (`GET /rides/quote`). **Request ride** →
+  `POST /rides` (runs `aloca_motorista`). The ride screen follows the trip live
+  over the socket — status pushes plus the driver's car moving on the map —
+  shows the cancellation fee before cancelling, and asks for a 1–5★ rating at
+  the end. **My trips** lists past rides; an active ride is resumed after a
+  restart.
 - **Driver flow**: go online/offline, new requests arrive instantly over the socket
   (`ride:updated`, with vibration), accept / decline, passenger on board, complete trip;
   GPS is streamed while online; today's trips and earnings in the top bar.
@@ -46,5 +50,4 @@ app/
 
 ## Next milestones
 
-- Real-time driver location on the rider map (WebSocket).
-- Push notifications (FCM), payments, trip history.
+- Push notifications (FCM) when the app is in the background, payments.

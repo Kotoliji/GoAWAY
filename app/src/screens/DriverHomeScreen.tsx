@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator, Vibration,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region } from 'react-native-maps';
 import * as Location from 'expo-location';
 import { useAuth } from '../auth/AuthContext';
@@ -18,6 +19,7 @@ import { currentPosition, money } from '../geo';
 const POLL_MS = 15000; // safety net; pushes normally arrive over the socket
 
 export default function DriverHomeScreen({ navigation }: ScreenProps<'DriverHome'>) {
+  const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
   const [state, setState] = useState<DriverState | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
@@ -121,7 +123,7 @@ export default function DriverHomeScreen({ navigation }: ScreenProps<'DriverHome
         </TouchableOpacity>
       </View>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { bottom: 24 + insets.bottom }]}>
         {driver.STATUS === 'DISABLED' ? (
           <>
             <Text style={styles.title}>Account disabled</Text>

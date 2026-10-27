@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker } from 'react-native-maps';
 import { getRideApi, cancelRideApi, estimateApi, rateRideApi } from '../api/endpoints';
 import { Estimate, Ride } from '../api/types';
@@ -30,6 +31,7 @@ function headline(ride: Ride, car: Point | null, pickup: Point | null): string {
 }
 
 export default function RideStatusScreen({ route, navigation }: ScreenProps<'RideStatus'>) {
+  const insets = useSafeAreaInsets();
   const { rideId } = route.params;
   const [ride, setRide] = useState<Ride | null>(null);
   const [estimate, setEstimate] = useState<Estimate | null>(null);
@@ -170,7 +172,7 @@ export default function RideStatusScreen({ route, navigation }: ScreenProps<'Rid
         )}
       </MapView>
 
-      <View style={styles.card}>
+      <View style={[styles.card, { bottom: 24 + insets.bottom }]}>
         <Text style={styles.title}>{headline(ride, carPos, pickup)}</Text>
         {ride.STATUS === 'REQUESTED' && <ActivityIndicator style={styles.spinner} color="#0B5FFF" />}
 

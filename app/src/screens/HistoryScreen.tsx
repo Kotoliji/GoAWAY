@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, RefreshControl } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { historyApi } from '../api/endpoints';
 import { HistoryRow } from '../api/types';
@@ -14,6 +15,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 /** Past rides: a client's requests, or the trips a driver drove. */
 export default function HistoryScreen({ navigation }: ScreenProps<'History'>) {
+  const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const [rows, setRows] = useState<HistoryRow[] | null>(null);
   const [loading, setLoading] = useState(false);
@@ -39,6 +41,7 @@ export default function HistoryScreen({ navigation }: ScreenProps<'History'>) {
   return (
     <FlatList
       style={styles.list}
+      contentContainerStyle={{ paddingBottom: insets.bottom }}
       data={rows ?? []}
       keyExtractor={(r) => String(r.REQUEST_ID)}
       refreshControl={<RefreshControl refreshing={loading} onRefresh={load} />}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet, Alert, ScrollView,
 } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '../auth/AuthContext';
 import { ScreenProps } from '../navigation/types';
 import { FuelType, SignupInput } from '../api/types';
@@ -33,6 +34,7 @@ function Chips<T extends string>({
 }
 
 export default function RegisterScreen(_props: ScreenProps<'Register'>) {
+  const insets = useSafeAreaInsets();
   const { signUp } = useAuth();
   const [role, setRole] = useState<'CLIENT' | 'DRIVER'>('CLIENT');
   const [name, setName] = useState('');
@@ -85,7 +87,7 @@ export default function RegisterScreen(_props: ScreenProps<'Register'>) {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="handled">
+    <ScrollView contentContainerStyle={[styles.container, { paddingBottom: 24 + insets.bottom }]} keyboardShouldPersistTaps="handled">
       <Text style={styles.title}>Create account</Text>
 
       <Chips

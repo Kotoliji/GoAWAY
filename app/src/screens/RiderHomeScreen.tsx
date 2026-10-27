@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import MapView, { Marker, Region, MapPressEvent } from 'react-native-maps';
 import { useFocusEffect } from '@react-navigation/native';
 import { useAuth } from '../auth/AuthContext';
@@ -15,6 +16,7 @@ const CLASSES = [
 ] as const;
 
 export default function RiderHomeScreen({ navigation }: ScreenProps<'RiderHome'>) {
+  const insets = useSafeAreaInsets();
   const { signOut } = useAuth();
   const [here, setHere] = useState<Point | null>(null);
   const [region, setRegion] = useState<Region | null>(null);
@@ -133,7 +135,7 @@ export default function RiderHomeScreen({ navigation }: ScreenProps<'RiderHome'>
         </TouchableOpacity>
       )}
 
-      <View style={styles.card}>
+      <View style={[styles.card, { bottom: 24 + insets.bottom }]}>
         {!dest ? (
           <>
             <Text style={styles.title}>Where to?</Text>

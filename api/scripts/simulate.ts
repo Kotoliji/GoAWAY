@@ -11,7 +11,13 @@
  * PL/SQL rules, pushes and the admin live map all run for real.
  * Ctrl+C (or SIM_SECONDS elapsing) cancels open requests and puts every driver
  * back as it was: originally available drivers return to their position,
- * the others go offline.
+ * the others go offline. Restarted after a crash, it resumes the trips in progress.
+ *
+ *   SIM_HUMAN=joao.marques@email.com npm run simulate
+ *
+ * drives the demo around a driver you play yourself in the mobile app: that
+ * driver is left alone, and the simulated clients order rides next to wherever
+ * your phone is, so the requests come to you.
  */
 import { io, Socket } from 'socket.io-client';
 
@@ -21,7 +27,8 @@ const N_CLIENTS = Number(process.env.SIM_CLIENTS ?? 5);
 const SECONDS = Number(process.env.SIM_SECONDS ?? 0); // 0 = until Ctrl+C
 const TICK_MS = 1000;
 const STEP = 0.0006; // degrees per tick (~60 m): fast-forwarded city driving
-const CENTER = { lat: 40.2033, long: -8.4103 }; // Coimbra
+const HUMAN = process.env.SIM_HUMAN?.toLowerCase();
+let CENTER = { lat: 40.2033, long: -8.4103 }; // Coimbra, or around SIM_HUMAN
 
 type Pos = { lat: number; long: number };
 type Ride = { REQUEST_ID: number; STATUS: string; DRIVER_ID: number | null; CLIENT_LAT: number; CLIENT_LONG: number; DEST_LAT: number; DEST_LONG: number };
@@ -73,8 +80,12 @@ class SimDriver {
   async start() {
     this.socket = io(API, { transports: ['websocket'], auth: { token: this.token } });
     this.socket.on('ride:updated', () => this.sync());
-    await call('POST', '/driver/online', this.token, this.pos);
     await this.sync();
+    if (this.ride) {
+      if (this.home) this.pos = { ...this.home }; // resume a trip from where the car is
+    } else {
+      await call('POST', '/driver/online', this.token, this.pos);
+    }
   }
 
   async sync() {
@@ -138,14 +149,22 @@ class SimDriver {
 class SimClient {
   rideId: number | null = null;
   since = 0;
-  constructor(public name: string, public token: string) {}
+  /** `pickup`: where the next ride starts (near SIM_HUMAN, if set). */
+  constructor(public name: string, public token: string, public pickup: () => Promise<Pos>) {}
+
+  /** Pick up a ride left open by a previous run. */
+  async start() {
+    const { ride } = await call<{ ride: Ride | null }>('GET', '/rides/current', this.token);
+    this.rideId = ride?.REQUEST_ID ?? null;
+    this.since = Date.now();
+  }
 
   async tick() {
     try {
       if (this.rideId == null) {
         if (Math.random() > 0.08) return; // not everyone wants a ride right now
-        const from = around(CENTER, 2.5);
-        const to = around(CENTER, 3);
+        const from = await this.pickup();
+        const to = around(from, 3);
         const r = await call<{ ride: Ride; allocated: boolean }>('POST', '/rides', this.token, {
           originLat: from.lat, originLong: from.long, originAddress: 'Simulated pickup',
           destName: 'Simulated destination', destLat: to.lat, destLong: to.long,
@@ -185,27 +204,47 @@ async function main() {
   const { drivers } = await call<{ drivers: { DRIVER_ID: number; NAME: string; EMAIL: string; STATUS: string }[] }>('GET', '/admin/drivers', admin);
   const live = await call<{ drivers: { DRIVER_ID: number; LATITUDE: number; LONGITUDE: number }[] }>('GET', '/admin/live', admin);
   const homes = new Map(live.drivers.map((d) => [d.DRIVER_ID, { lat: d.LATITUDE, long: d.LONGITUDE }]));
-  // Every driver already AVAILABLE must be driven (aloca_motorista may pick any
-  // of them), topped up with offline ones up to SIM_DRIVERS.
-  const available = drivers.filter((d) => d.STATUS === 'AVAILABLE');
-  const offline = drivers.filter((d) => d.STATUS === 'OFFLINE');
+  const human = HUMAN ? drivers.find((d) => d.EMAIL.toLowerCase() === HUMAN) : undefined;
+  if (HUMAN && !human) throw new Error(`SIM_HUMAN: no driver ${HUMAN}`);
+  const humanPos = async (): Promise<Pos | null> => {
+    const l = await call<{ drivers: { DRIVER_ID: number; LATITUDE: number; LONGITUDE: number }[] }>('GET', '/admin/live', admin);
+    const h = l.drivers.find((d) => d.DRIVER_ID === human?.DRIVER_ID);
+    return h ? { lat: h.LATITUDE, long: h.LONGITUDE } : null;
+  };
+  if (human) {
+    const at = await humanPos();
+    if (at) CENTER = at;
+    log(`SIM_HUMAN: leaving ${human.NAME} to you${at ? '' : ' (go online in the app: rides start near you once you do)'}`);
+  }
+  // Every driver already AVAILABLE (or mid-trip) must be driven — aloca_motorista
+  // may pick any of them — topped up with offline ones up to SIM_DRIVERS.
+  const others = drivers.filter((d) => d.DRIVER_ID !== human?.DRIVER_ID);
+  const available = others.filter((d) => d.STATUS === 'AVAILABLE' || d.STATUS === 'ON_TRIP');
+  const offline = others.filter((d) => d.STATUS === 'OFFLINE');
   const pool = [...available, ...offline.slice(0, Math.max(0, N_DRIVERS - available.length))];
 
   const simDrivers: SimDriver[] = [];
   for (const d of pool) {
-    const home = d.STATUS === 'AVAILABLE' ? homes.get(d.DRIVER_ID) ?? null : null;
+    const home = d.STATUS !== 'OFFLINE' ? homes.get(d.DRIVER_ID) ?? null : null;
     const sd = new SimDriver(d.NAME, await login(d.EMAIL, 'demo123'), home);
     await sd.start();
     simDrivers.push(sd);
   }
 
+  // Near SIM_HUMAN pickups are closer than the simulated drivers wander, so the
+  // human is usually the nearest free driver.
+  const pickup = human
+    ? async () => around((await humanPos().catch(() => null)) ?? CENTER, 0.8)
+    : async () => around(CENTER, 2.5);
   const simClients: SimClient[] = [];
   for (let i = 1; i <= N_CLIENTS; i++) {
     const email = `sim.client${i}@tvdept.sim`;
     const token = await login(email, 'demo123').catch(async () =>
       (await call('POST', '/auth/register', undefined, { role: 'CLIENT', email, password: 'demo123', name: `Sim Client ${i}` })).accessToken,
     );
-    simClients.push(new SimClient(`Sim Client ${i}`, token));
+    const sc = new SimClient(`Sim Client ${i}`, token, pickup);
+    await sc.start();
+    simClients.push(sc);
   }
   log(`simulating ${simDrivers.length} drivers and ${simClients.length} clients against ${API} — Ctrl+C to stop`);
 

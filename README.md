@@ -25,14 +25,24 @@ as a university project that I designed together with
 | **Drivers — payouts, disable / re-enable** | **Reports — the SQL analytical views** |
 | ![Drivers](docs/screenshots/admin-drivers.png) | ![Reports](docs/screenshots/admin-reports.png) |
 
-**Mobile app** — free cars nearby, the fare before ordering, trip history, and
-sign-up as a rider or as a driver with a vehicle:
+**Mobile app — rider:** free cars nearby, the fare before ordering, trip
+history, and sign-up as a rider or as a driver with a vehicle:
 
 <p>
   <img src="docs/screenshots/app-rider-home.jpg" width="200" alt="Rider: free cars nearby">
   <img src="docs/screenshots/app-rider-quote.jpg" width="200" alt="Rider: fare range and nearest car before ordering">
   <img src="docs/screenshots/app-rider-history.jpg" width="200" alt="Rider: trip history with fares and ratings">
   <img src="docs/screenshots/app-signup.jpg" width="200" alt="Sign-up as a driver with a vehicle">
+</p>
+
+**Mobile app — driver:** online with today's earnings, a new request to accept
+or decline, heading to the pickup, then on the trip:
+
+<p>
+  <img src="docs/screenshots/app-driver-online.jpg" width="200" alt="Driver: online, today's earnings">
+  <img src="docs/screenshots/app-driver-request.jpg" width="200" alt="Driver: new ride request with fare">
+  <img src="docs/screenshots/app-driver-pickup.jpg" width="200" alt="Driver: heading to the pickup">
+  <img src="docs/screenshots/app-driver-trip.jpg" width="200" alt="Driver: on trip to the destination">
 </p>
 
 ---

@@ -12,6 +12,11 @@ triggers. On top of it:
 - a **React admin panel** with KPIs, a live map, payouts and the analytical views,
 - a **traffic simulator** that makes the whole system move for a demo.
 
+**My role** — I built the platform end to end: the API, the mobile app, the
+admin panel, the simulator, Docker, tests and CI. The Oracle database started
+as a university project that I designed together with
+[gltknebr](mailto:gltknebr@gmail.com).
+
 ![Live map: drivers (green available, blue on trip) and rides from pickup to destination, streamed in real time](docs/screenshots/live-map.gif)
 
 | Admin dashboard | Live map |
@@ -19,6 +24,16 @@ triggers. On top of it:
 | ![Dashboard](docs/screenshots/admin-dashboard.png) | ![Live map](docs/screenshots/admin-live-map.png) |
 | **Drivers — payouts, disable / re-enable** | **Reports — the SQL analytical views** |
 | ![Drivers](docs/screenshots/admin-drivers.png) | ![Reports](docs/screenshots/admin-reports.png) |
+
+**Mobile app** — free cars nearby, the fare before ordering, trip history, and
+sign-up as a rider or as a driver with a vehicle:
+
+<p>
+  <img src="docs/screenshots/app-rider-home.jpg" width="200" alt="Rider: free cars nearby">
+  <img src="docs/screenshots/app-rider-quote.jpg" width="200" alt="Rider: fare range and nearest car before ordering">
+  <img src="docs/screenshots/app-rider-history.jpg" width="200" alt="Rider: trip history with fares and ratings">
+  <img src="docs/screenshots/app-signup.jpg" width="200" alt="Sign-up as a driver with a vehicle">
+</p>
 
 ---
 
@@ -120,7 +135,9 @@ cd api && npm install && npm run simulate     # Ctrl+C to stop
 
 Seeded drivers drive around Coimbra, simulated clients order rides, drivers
 accept, pick up and drop off, clients rate — all through the public API, so the
-dashboard and live map update in real time.
+dashboard and live map update in real time. To play a driver yourself in the
+app, run `SIM_HUMAN=joao.marques@email.com npm run simulate`: that driver is left
+to you and the simulated clients order rides next to your phone.
 
 **Mobile app** — on a phone with [Expo Go](https://expo.dev/go), on the same
 Wi-Fi as the computer:
@@ -225,8 +242,8 @@ ER diagram.
 
 ## Authors
 
-- gltknebr@gmail.com
-- kirill30082005@gmail.com
+- kirill30082005@gmail.com — author
+- gltknebr@gmail.com — co-author of the database
 
 ## License
 
